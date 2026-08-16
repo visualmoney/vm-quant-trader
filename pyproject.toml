@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
-    "click>=8.1",
+    "click>=8.0",
     "matplotlib>=3.8",
     "numpy>=2.0.0",
     "pandas>=2.2",
-    "pytz>=2026.3.post1",
+    "pytz>=2020.1",
     "seaborn>=0.13",
 ]
 authors = [
@@ -41,8 +41,28 @@ Documentation = "https://www.quantstart.com/qstrader/"
 Website = "https://www.quantstart.com"
 
 [dependency-groups]
-dev = [
+# Mirrors requirements/tests.txt, which the Dockerfiles install from.
+test = [
+    "pytest>=5.2.2",
+    "pytest-cov>=2.8.1",
+    "coveralls>=1.8.2",
+    "flake8>=3.7.9",
+]
+
+# Only needed to download price data for the scripts in examples/.
+# Deliberately kept out of the runtime dependencies: yfinance pulls in a
+# large HTML-scraping stack that a backtest never uses, and the examples
+# are not part of the distributed package.
+examples = [
     "yfinance>=1.2.0",
+]
+
+# uv syncs the 'dev' group by default, so including the other groups here
+# keeps 'uv run pytest' and 'uv run python examples/download_data.py'
+# working without any extra flags.
+dev = [
+    {include-group = "test"},
+    {include-group = "examples"},
 ]
 
 

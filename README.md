@@ -79,7 +79,7 @@ cd qstrader
 The 60/40 script makes use of OHLC 'daily bar' data from Yahoo! Finance. In particular it requires the [SPY](https://finance.yahoo.com/quote/SPY/history?p=SPY) and [AGG](https://finance.yahoo.com/quote/AGG/history?p=AGG) ETF data. The bundled `download_data.py` helper fetches the full history for each and writes it into the CSV format expected by QSTrader:
 
 ```
-pip3 install yfinance
+pip3 install -r requirements/examples.txt
 python examples/download_data.py
 ```
 
@@ -105,7 +105,7 @@ Every example follows the same two steps: download the CSV data it needs, then r
 
 ## 1. Downloading the data
 
-`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance (via [yfinance](https://pypi.org/project/yfinance/), `pip3 install yfinance`) and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker.
+`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and installed separately with `pip3 install -r requirements/examples.txt`.
 
 ```
 python examples/download_data.py                        # defaults to SPY and AGG
