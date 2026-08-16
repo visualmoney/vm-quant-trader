@@ -6,6 +6,8 @@ By default the examples run headless: the tearsheet is written to
 'out/tearsheet-<name>-<yyyymmdd-hhmmss>.png' relative to the repository root
 and no interactive window is opened. Pass '--show' to display it instead.
 
+Settings are also read from a '.env' file, via 'qstrader.env_file'.
+
 Usage
 -----
     # 기본값: 파일로만 저장 (헤드리스 환경에서 동작)
@@ -26,7 +28,7 @@ import argparse
 import datetime
 import os
 
-from env_file import load_env_file
+from qstrader.env_file import load_env_file
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

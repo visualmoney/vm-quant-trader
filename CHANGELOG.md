@@ -1,3 +1,10 @@
+# 0.3.3
+
+* Moves the '.env' loader from examples/env_file.py into the package as qstrader/env_file.py, so that both examples/ and scripts/ can import it without sys.path manipulation. The search now walks upwards from the current directory rather than falling back to a path relative to the package, which was meaningless for an installed copy. Nothing is loaded on import; callers invoke load_env_file() explicitly.
+* Adds unit tests for the '.env' loader covering value quoting, inline comments, malformed lines, environment precedence, upward search and QSTRADER_ENV_FILE.
+* Updates scripts/static_backtest.py to read QSTRADER_CSV_DATA_DIR from a '.env' file, matching the examples.
+* Adds a '--tearsheet-file' option to scripts/static_backtest.py, which saves the tearsheet without requiring a display. The existing '--tearsheet' flag still opens a blocking window and both can be combined.
+
 # 0.3.2
 
 * Aligns pyproject.toml with the requirements files, which the Dockerfiles and Travis config install from. Previously the two had drifted, and 'uv sync' would uninstall the test tooling because it was declared in requirements/tests.txt only.

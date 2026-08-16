@@ -11,6 +11,7 @@ from qstrader.asset.equity import Equity
 from qstrader.asset.universe.static import StaticUniverse
 from qstrader.data.backtest_data_handler import BacktestDataHandler
 from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
+from qstrader.env_file import load_env_file
 from qstrader.statistics.json_statistics import JSONStatistics
 from qstrader.statistics.tearsheet import TearsheetStatistics
 from qstrader.trading.backtest import BacktestTradingSession
@@ -54,7 +55,12 @@ def obtain_allocations(allocations):
 @click.option('--title', 'strat_title', help='Backtest strategy title')
 @click.option('--id', 'strat_id', help='Backtest strategy ID string')
 @click.option('--tearsheet', 'tearsheet', is_flag=True, default=False, help='Whether to display the (blocking) tearsheet plot')
-def cli(start_date, end_date, allocations, strat_title, strat_id, tearsheet):
+@click.option('--tearsheet-file', 'tearsheet_file', default=None, type=click.Path(), help='Save the tearsheet to this path. Works without a display, so it can be used on headless machines.')
+def cli(start_date, end_date, allocations, strat_title, strat_id, tearsheet, tearsheet_file):
+    # Pick up QSTRADER_CSV_DATA_DIR and friends from a '.env' file, if present.
+    # Variables already set in the environment take precedence.
+    load_env_file()
+
     csv_dir = os.environ.get('QSTRADER_CSV_DATA_DIR', '.')
 
     start_dt = pd.Timestamp('%s 00:00:00' % start_date, tz=pytz.UTC)
@@ -136,13 +142,18 @@ def cli(start_date, end_date, allocations, strat_title, strat_id, tearsheet):
     )
     stats.to_file()
 
-    if tearsheet:
-        tearsheet = TearsheetStatistics(
+    if tearsheet or tearsheet_file is not None:
+        if not tearsheet:
+            # 저장만 할 때는 디스플레이가 필요 없는 백엔드로 전환한다
+            import matplotlib
+            matplotlib.use('Agg')
+
+        tearsheet_stats = TearsheetStatistics(
             strategy_equity=strategy_backtest.get_equity_curve(),
             benchmark_equity=benchmark_backtest.get_equity_curve(),
             title=strat_title
         )
-        tearsheet.plot_results()
+        tearsheet_stats.plot_results(filename=tearsheet_file, show=tearsheet)
 
 
 if __name__ == "__main__":

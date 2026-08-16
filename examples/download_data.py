@@ -18,7 +18,7 @@ Usage
     python examples/download_data.py --data SPY --start 2010-01-01 --end 2020-01-01
 
 저장 위치는 '--output-dir', 환경변수 QSTRADER_CSV_DATA_DIR, 그리고 '.env' 파일의
-QSTRADER_CSV_DATA_DIR 순으로 결정된다. '.env' 처리는 'env_file' 모듈을 참고.
+QSTRADER_CSV_DATA_DIR 순으로 결정된다. '.env' 처리는 'qstrader.env_file' 모듈을 참고.
 """
 
 import argparse
@@ -27,7 +27,7 @@ import sys
 
 import yfinance as yf
 
-from env_file import load_env_file
+from qstrader.env_file import load_env_file
 
 
 # QSTrader의 CSVDailyBarDataSource는 'Date'를 인덱스로 하고

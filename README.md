@@ -138,7 +138,7 @@ Keeping downloaded data and generated results apart is worth the one-line settin
 
 ## Configuration via a .env file
 
-Rather than exporting variables in every shell, the examples will also read them from a `.env` file. This needs no extra packages — the examples parse the file themselves.
+Rather than exporting variables in every shell, the examples will also read them from a `.env` file. This needs no extra packages — QSTrader parses the file itself, in `qstrader/env_file.py`. Nothing is loaded implicitly: importing QSTrader never touches the environment, and only the scripts under `examples/` and `scripts/` call the loader.
 
 A documented template is provided as [`.env.example`](https://github.com/mhallsmoore/qstrader/blob/master/.env.example). Copy it and edit to suit:
 
