@@ -4,12 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
     "click>=8.1",
     "matplotlib>=3.8",
     "numpy>=2.0.0",
     "pandas>=2.2",
+    "pytz>=2026.3.post1",
     "seaborn>=0.13",
 ]
 authors = [
@@ -38,5 +39,10 @@ Homepage = "https://github.com/mhallsmoore/qstrader"
 Issues = "https://github.com/mhallsmoore/qstrader/issues"
 Documentation = "https://www.quantstart.com/qstrader/"
 Website = "https://www.quantstart.com"
+
+[dependency-groups]
+dev = [
+    "yfinance>=1.2.0",
+]
 
 

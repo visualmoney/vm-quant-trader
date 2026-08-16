@@ -1,3 +1,14 @@
+# 0.3.1
+
+* Fixes the examples failing to load CSV data. Recent yfinance versions write a three-row MultiIndex header, which CSVDailyBarDataSource cannot parse, and default to auto_adjust=True, which omits the 'Adj Close' column.
+* Adds a 'show' argument to TearsheetStatistics.plot_results(). When False the tearsheet is saved without opening a window, so the examples run on headless machines. The output directory is now created if it does not exist.
+* Renames examples/download_data_spy_and_agg.py to examples/download_data.py and generalises it. Symbols are selected with '--data' (space or comma separated, defaulting to SPY and AGG), with '--output-dir', '--period', '--start', '--end' and '--help' also available.
+* Adds examples/tearsheet_output.py. Every example now saves its tearsheet to 'out/tearsheet-<example>-<yyyymmdd-hhmmss>.png' by default and accepts '--show', '--no-save', '--output' and '--output-dir'.
+* Adds examples/env_file.py, which loads QSTRADER_CSV_DATA_DIR and QSTRADER_OUTPUT_DIR from a '.env' file without requiring python-dotenv. Existing environment variables take precedence. Adds a documented '.env.example' template.
+* Adds pytz to the package dependencies, which qstrader/data/daily_bar_csv.py imports, and yfinance to a dev dependency group for the data downloader.
+* Documents the example workflow in the README, covering data download, the required symbols per example, tearsheet output options and '.env' configuration.
+* Ignores the '/data/' and '.env' paths in .gitignore.
+
 # 0.3.0
 
 * Updates dependencies to use numpy v2.0.0. 

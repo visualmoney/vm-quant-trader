@@ -69,23 +69,148 @@ The QSTrader repository provides some simple example strategies at [/examples](h
 
 Within this quickstart section a classic 60/40 equities/bonds portfolio will be backtested with monthly rebalancing on the last day of the calendar month.
 
-To get started download the [sixty_forty.py](https://github.com/mhallsmoore/qstrader/blob/master/examples/sixty_forty.py) file and place into the directory of your choice.
-
-The 60/40 script makes use of OHLC 'daily bar' data from Yahoo Finance. In particular it requires the [SPY](https://finance.yahoo.com/quote/SPY/history?p=SPY) and [AGG](https://finance.yahoo.com/quote/AGG/history?p=AGG) ETFs data. Download the full history for each and save as CSV files in same directory as ``sixty_forty.py``.
-
-Assuming that an appropriate Python environment exists and QSTrader has been installed (see **Installation** above), make sure to activate the virtual environment, navigate to the directory with ``sixty_forty.py`` and type:
+Assuming that an appropriate Python environment exists and QSTrader has been installed (see **Installation** above), make sure to activate the virtual environment and clone the repository:
 
 ```
-python sixty_forty.py
+git clone https://github.com/mhallsmoore/qstrader.git
+cd qstrader
 ```
 
-You will then see some console output as the backtest simulation engine runs through each day and carries out the rebalancing logic once per month. Once the backtest is complete a tearsheet will appear:
+The 60/40 script makes use of OHLC 'daily bar' data from Yahoo! Finance. In particular it requires the [SPY](https://finance.yahoo.com/quote/SPY/history?p=SPY) and [AGG](https://finance.yahoo.com/quote/AGG/history?p=AGG) ETF data. The bundled `download_data.py` helper fetches the full history for each and writes it into the CSV format expected by QSTrader:
+
+```
+pip3 install yfinance
+python examples/download_data.py
+```
+
+This writes `SPY.csv` and `AGG.csv` into the current directory. Now run the backtest:
+
+```
+python examples/sixty_forty.py
+```
+
+You will then see some console output as the backtest simulation engine runs through each day and carries out the rebalancing logic once per month. Once the backtest is complete a tearsheet is saved to `out/tearsheet-sixty-forty-<yyyymmdd-hhmmss>.png`:
 
 ![Image of 60/40 Backtest](https://quantstartmedia.s3.amazonaws.com/images/qstrader_sixty_forty_backtest.png)
+
+Saving to a file — rather than opening a window — is the default so that the examples also run on headless machines such as remote servers and CI. Add `--show` to open the tearsheet in an interactive window instead.
 
 You can examine the commented ``sixty_forty.py`` file to see the current QSTrader backtesting API.
 
 If you have any questions about the installation or example usage then please feel free to email [support@quantstart.com](mailto:support@quantstart.com) or raise an issue [here](https://github.com/mhallsmoore/qstrader/issues).
+
+# Running the Examples
+
+Every example follows the same two steps: download the CSV data it needs, then run the script. Both are run from the repository root.
+
+## 1. Downloading the data
+
+`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance (via [yfinance](https://pypi.org/project/yfinance/), `pip3 install yfinance`) and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker.
+
+```
+python examples/download_data.py                        # defaults to SPY and AGG
+python examples/download_data.py --data SPY AGG QQQ     # space separated
+python examples/download_data.py --data SPY,AGG,QQQ     # or comma separated
+python examples/download_data.py --data SPY --start 2010-01-01 --end 2020-01-01
+python examples/download_data.py --data SPY --output-dir /path/to/csvs
+python examples/download_data.py --help
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `-d`, `--data SYMBOL [SYMBOL ...]` | Tickers to download, space or comma separated. Defaults to `SPY AGG`. |
+| `-o`, `--output-dir DIR` | Directory to write the CSV files into. Defaults to `QSTRADER_CSV_DATA_DIR` (from the environment or a `.env` file), or the current directory. Created if it does not exist. |
+| `-p`, `--period PERIOD` | yfinance download period. Ignored when `--start` is given. Defaults to `max`. |
+| `-s`, `--start YYYY-MM-DD` | Inclusive start date. |
+| `-e`, `--end YYYY-MM-DD` | Exclusive end date. |
+
+The examples read their CSV files from `QSTRADER_CSV_DATA_DIR`, falling back to the current directory, so the downloader and the example must agree on a location. Keeping the default for both — running each from the repository root — is the simplest option. To store the data elsewhere, set the environment variable once and both will honour it:
+
+```
+export QSTRADER_CSV_DATA_DIR=data
+python examples/download_data.py
+python examples/sixty_forty.py
+```
+
+Any directory that does not yet exist is created automatically, including nested paths, by both the downloader and the tearsheet output.
+
+Keeping downloaded data and generated results apart is worth the one-line setting: `data` holds what was fetched, `out` holds what a backtest produced. `out` can then be deleted at any time without losing the price history, which takes a while to download again. Both `/data/` and `out` are listed in `.gitignore`.
+
+## Configuration via a .env file
+
+Rather than exporting variables in every shell, the examples will also read them from a `.env` file. This needs no extra packages — the examples parse the file themselves.
+
+A documented template is provided as [`.env.example`](https://github.com/mhallsmoore/qstrader/blob/master/.env.example). Copy it and edit to suit:
+
+```
+cp .env.example .env
+```
+
+```
+# .env
+QSTRADER_CSV_DATA_DIR=data
+QSTRADER_OUTPUT_DIR=out
+```
+
+```
+python examples/download_data.py     # writes into data/
+python examples/sixty_forty.py       # reads from data/, saves the tearsheet into out/
+```
+
+Variables already present in the environment always take precedence, so an `export` on the command line still overrides the file. The `.env` file is looked up in this order, and the first one found is used:
+
+1. The path given by `QSTRADER_ENV_FILE`, if set.
+2. `.env` in the current directory.
+3. `.env` in the repository root.
+
+Blank lines and `#` comments are ignored, an `export ` prefix is allowed, and quoted values are supported. Note that `.env` is listed in `.gitignore` and should not be committed — commit changes to `.env.example` instead.
+
+## 2. Running a backtest
+
+| Example | Strategy | Required symbols |
+| ------- | -------- | ---------------- |
+| [`sixty_forty.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/sixty_forty.py) | 60/40 equities/bonds, rebalanced monthly | `SPY AGG` |
+| [`sixty_forty_fees.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/sixty_forty_fees.py) | The same 60/40 portfolio, with and without commission | `SPY AGG` |
+| [`buy_and_hold.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/buy_and_hold.py) | Buy & hold a single gold ETF | `GLD` |
+| [`long_short.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/long_short.py) | Long/short leveraged treasury bond ETFs | `TLT IEI SPY` |
+| [`momentum_taa.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/momentum_taa.py) | US sector momentum, top 3 sectors | `XLB XLC XLE XLF XLI XLK XLP XLU XLV XLY SPY` |
+
+For instance, to run the sector momentum strategy:
+
+```
+python examples/download_data.py --data XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY,SPY
+python examples/momentum_taa.py
+```
+
+## 3. Tearsheet output
+
+By default each example saves its tearsheet to `out/tearsheet-<example>-<yyyymmdd-hhmmss>.png` and does not open a window, so the examples run unchanged on headless machines. The timestamp means repeated runs never overwrite each other.
+
+```
+python examples/sixty_forty.py                              # save only (default)
+python examples/sixty_forty.py --show                       # save and display
+python examples/sixty_forty.py --show --no-save             # display only
+python examples/sixty_forty.py --output out/my-chart.png    # explicit path
+python examples/sixty_forty.py --output-dir /path/to/dir    # explicit directory
+python examples/sixty_forty.py --help
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `--show` | Open the tearsheet in an interactive Matplotlib window. Off by default. |
+| `--no-save` | Do not write the tearsheet to disk. |
+| `-o`, `--output PATH` | Save to an explicit file path instead of the timestamped default. |
+| `--output-dir DIR` | Directory to save into. Defaults to `QSTRADER_OUTPUT_DIR` (from the environment or a `.env` file), or `out` at the repository root. Created if it does not exist. |
+
+When writing your own script, the same behaviour is available directly on the tearsheet:
+
+```python
+tearsheet = TearsheetStatistics(
+    strategy_equity=strategy_backtest.get_equity_curve(),
+    title='My Strategy'
+)
+tearsheet.plot_results(filename='out/my-chart.png', show=False)
+```
 
 # Current Features
 

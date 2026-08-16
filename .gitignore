@@ -2,12 +2,19 @@
 *.py[co]
 .DS_Store
 __pycache__
-out
 cover
+
+# downloaded CSV price data (QSTRADER_CSV_DATA_DIR)
+# leading slash so that the tracked qstrader/data package is not ignored
+/data/
+
+# backtest output such as saved tearsheets (QSTRADER_OUTPUT_DIR)
+out
 
 # environment
 env/
 venv/
+.env
 
 # Packages
 *.egg

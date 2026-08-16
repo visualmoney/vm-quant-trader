@@ -11,8 +11,12 @@ from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
 from qstrader.statistics.tearsheet import TearsheetStatistics
 from qstrader.trading.backtest import BacktestTradingSession
 
+from tearsheet_output import output_tearsheet, parse_args
+
 
 if __name__ == "__main__":
+    args = parse_args(__file__, description='Buy & Hold GLD ETF 백테스트.')
+
     start_dt = pd.Timestamp('2004-11-19 14:30:00', tz=pytz.UTC)
     end_dt = pd.Timestamp('2019-12-31 23:59:00', tz=pytz.UTC)
 
@@ -48,4 +52,4 @@ if __name__ == "__main__":
         strategy_equity=strategy_backtest.get_equity_curve(),
         title='Buy & Hold GLD ETF'
     )
-    tearsheet.plot_results()
+    output_tearsheet(tearsheet, args)
