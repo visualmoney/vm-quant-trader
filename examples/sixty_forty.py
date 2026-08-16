@@ -11,8 +11,12 @@ from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
 from qstrader.statistics.tearsheet import TearsheetStatistics
 from qstrader.trading.backtest import BacktestTradingSession
 
+from tearsheet_output import output_tearsheet, parse_args
+
 
 if __name__ == "__main__":
+    args = parse_args(__file__, description='60/40 US Equities/Bonds 백테스트.')
+
     start_dt = pd.Timestamp('2003-09-30 14:30:00', tz=pytz.UTC)
     end_dt = pd.Timestamp('2019-12-31 23:59:00', tz=pytz.UTC)
 
@@ -69,4 +73,4 @@ if __name__ == "__main__":
         benchmark_equity=benchmark_backtest.get_equity_curve(),
         title='60/40 US Equities/Bonds'
     )
-    tearsheet.plot_results()
+    output_tearsheet(tearsheet, args)

@@ -16,6 +16,8 @@ from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
 from qstrader.statistics.tearsheet import TearsheetStatistics
 from qstrader.trading.backtest import BacktestTradingSession
 
+from tearsheet_output import output_tearsheet, parse_args
+
 
 class TopNMomentumAlphaModel(AlphaModel):
 
@@ -148,6 +150,8 @@ class TopNMomentumAlphaModel(AlphaModel):
 
 
 if __name__ == "__main__":
+    args = parse_args(__file__, description='US Sector Momentum (Top 3 Sectors) 백테스트.')
+
     # Duration of the backtest
     start_dt = pd.Timestamp('1998-12-22 14:30:00', tz=pytz.UTC)
     burn_in_dt = pd.Timestamp('1999-12-22 14:30:00', tz=pytz.UTC)
@@ -228,4 +232,4 @@ if __name__ == "__main__":
         benchmark_equity=benchmark_backtest.get_equity_curve(),
         title='US Sector Momentum - Top 3 Sectors'
     )
-    tearsheet.plot_results()
+    output_tearsheet(tearsheet, args)

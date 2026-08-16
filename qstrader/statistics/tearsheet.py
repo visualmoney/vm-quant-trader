@@ -1,3 +1,5 @@
+import os
+
 from matplotlib.ticker import FuncFormatter
 from matplotlib import cm
 import matplotlib.pyplot as plt
@@ -261,7 +263,7 @@ class TearsheetStatistics(Statistics):
         ax.axis([0, 10, 0, 10])
         return ax
 
-    def plot_results(self, filename=None):
+    def plot_results(self, filename=None, show=True):
         """
         Plot the Tearsheet
 
@@ -269,6 +271,10 @@ class TearsheetStatistics(Statistics):
         ==========
         filename : `str`
             Option to save the tearsheet output when a filename is specified.
+        show : `Boolean`, optional
+            Whether to display the tearsheet in an interactive window. Set to
+            False on headless machines, where only the saved file is required.
+            Defaults to True.
         """
         rc = {
             'lines.linewidth': 1.0,
@@ -318,12 +324,17 @@ class TearsheetStatistics(Statistics):
 
         # Save the figure
         if filename:
+            directory = os.path.dirname(os.path.abspath(filename))
+            if directory:
+                os.makedirs(directory, exist_ok=True)
             if settings.PRINT_EVENTS:
                 print(f"Saving tearsheet to {filename}")
-            fig = plt.gcf()    
             fig.savefig(filename)
 
         # Plot the figure
-        if settings.PRINT_EVENTS:
-            print('Plotting the tearsheet...')
-        plt.show()
+        if show:
+            if settings.PRINT_EVENTS:
+                print('Plotting the tearsheet...')
+            plt.show()
+        else:
+            plt.close(fig)
