@@ -1,22 +1,24 @@
-# file: examples/env_file.py
 """
-Minimal '.env' file loading for the QSTrader examples.
+Minimal '.env' file loading for QSTrader.
 
-This deliberately avoids a dependency on 'python-dotenv': the examples only
-need to pick up a handful of QSTrader settings such as QSTRADER_CSV_DATA_DIR
-and QSTRADER_OUTPUT_DIR, and QSTrader itself reads them straight from
-'os.environ'.
+QSTrader reads a handful of settings from the environment, most notably
+QSTRADER_CSV_DATA_DIR. This module lets those be kept in a '.env' file
+instead of being exported in every shell, without taking on a dependency
+such as 'python-dotenv'.
+
+Nothing is loaded implicitly. The scripts in 'examples/' and 'scripts/'
+call 'load_env_file()' themselves, so importing QSTrader never reads or
+modifies the environment as a side effect.
 
 Variables already present in the environment always win, so an explicit
-'export QSTRADER_CSV_DATA_DIR=...' or a variable set by the shell is never
-overwritten by the '.env' file.
+'export QSTRADER_CSV_DATA_DIR=...' is never overwritten by the file.
 
 The '.env' file is searched for in the following order, and the first one
 found is used:
 
 1. The path in the QSTRADER_ENV_FILE environment variable, if set.
 2. '.env' in the current working directory.
-3. '.env' in the repository root (the parent of this 'examples' directory).
+3. '.env' in each parent directory, walking upwards.
 
 Supported syntax
 ----------------
@@ -31,14 +33,18 @@ Supported syntax
 import os
 
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 ENV_FILENAME = '.env'
 
 
-def find_env_file():
+def find_env_file(start_dir=None):
     """
     Locate the '.env' file to load, if any.
+
+    Parameters
+    ----------
+    start_dir : `str`, optional
+        The directory to begin searching upwards from. Defaults to the
+        current working directory.
 
     Returns
     -------
@@ -49,14 +55,16 @@ def find_env_file():
     if explicit:
         return explicit if os.path.isfile(explicit) else None
 
-    candidates = [
-        os.path.join(os.getcwd(), ENV_FILENAME),
-        os.path.join(REPO_ROOT, ENV_FILENAME),
-    ]
-    for candidate in candidates:
+    directory = os.path.abspath(start_dir if start_dir is not None else os.getcwd())
+    while True:
+        candidate = os.path.join(directory, ENV_FILENAME)
         if os.path.isfile(candidate):
             return candidate
-    return None
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            # 파일시스템 루트에 도달
+            return None
+        directory = parent
 
 
 def parse_env_value(raw):
@@ -89,10 +97,10 @@ def parse_env_value(raw):
 
 def parse_env_file(path):
     """
-    Parse a '.env' file into an ordered dictionary of key/value pairs.
+    Parse a '.env' file into a dictionary of key/value pairs.
 
     Malformed lines (those with no '=' or no key) are skipped rather than
-    raising, so that a stray line cannot stop an example from running.
+    raising, so that a stray line cannot stop a backtest from running.
 
     Parameters
     ----------
