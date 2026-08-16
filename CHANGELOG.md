@@ -1,3 +1,11 @@
+# 0.3.2
+
+* Aligns pyproject.toml with the requirements files, which the Dockerfiles and Travis config install from. Previously the two had drifted, and 'uv sync' would uninstall the test tooling because it was declared in requirements/tests.txt only.
+* Adds a 'test' dependency group mirroring requirements/tests.txt, and an 'examples' group holding yfinance. The 'dev' group includes both, so uv keeps installing them by default.
+* Relaxes the pytz lower bound from 2026.3.post1 to 2020.1. The tighter bound was pinned to whichever release happened to be installed, while qstrader only uses pytz.UTC. Adds pytz to requirements/base.txt, where it was missing despite qstrader/data/daily_bar_csv.py importing it.
+* Realigns the click lower bound to 8.0 to match requirements/base.txt.
+* Adds requirements/examples.txt for the yfinance dependency used by examples/download_data.py.
+
 # 0.3.1
 
 * Fixes the examples failing to load CSV data. Recent yfinance versions write a three-row MultiIndex header, which CSVDailyBarDataSource cannot parse, and default to auto_adjust=True, which omits the 'Adj Close' column.
