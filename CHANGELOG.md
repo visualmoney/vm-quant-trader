@@ -1,3 +1,13 @@
+# 0.3.5
+
+* Moves click out of the runtime dependencies and into a 'scripts' dependency group, mirrored by requirements/scripts.txt. No module under qstrader/ imports click: its only user is scripts/static_backtest.py, which the wheel does not ship, so every installation was pulling in a dependency it could not use. This follows the same reasoning that keeps yfinance out of the runtime dependencies. The 'dev' group includes the new group, so 'uv run python scripts/static_backtest.py' keeps working.
+* Makes '--start-date', '--allocations', '--title' and '--id' required in scripts/static_backtest.py. Omitting any of them previously produced a pandas traceback, or silently wrote the results to 'None_monthly.json'.
+* Parses the dates with click.DateTime, so a malformed date is reported as a usage error rather than raising DateParseError from inside pandas.
+* Reports an unparseable '--allocations' string as a Click usage error, with exit code 2. The failure previously printed a message and called sys.exit() with no argument, which exits 0 and so looked like success to a shell or CI job. The allocations are now parsed as an option callback, before the backtest starts, and surrounding whitespace in 'SPY:0.6, AGG:0.4' is tolerated.
+* Writes the JSON statistics into QSTRADER_OUTPUT_DIR, as the examples already do for tearsheets, rather than always into the current directory. Adds '--output-dir' to override it, creating the directory if it does not exist. With neither set the output stays in the current directory as before.
+* Documents scripts/static_backtest.py in the README, which described only the examples.
+* Removes the empty scripts/__init__.py. Nothing imports scripts/ and it is not distributed.
+
 # 0.3.4
 
 * Replaces the '.travis.yml' config with a GitHub Actions workflow at '.github/workflows/ci.yml'. Travis CI was unusable: travis-ci.org has been retired, the README badges pointed at the upstream repository rather than this one, and three of the four Python versions in the matrix (3.6, 3.7, 3.8) could not install numpy>=2.0.0 or pandas>=2.2 at all.

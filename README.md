@@ -214,6 +214,32 @@ tearsheet = TearsheetStatistics(
 tearsheet.plot_results(filename='out/my-chart.png', show=False)
 ```
 
+## 4. The static allocation script
+
+`scripts/static_backtest.py` backtests an arbitrary fixed-weight portfolio against the 60/40 benchmark, taking the allocation on the command line rather than in code, and writes the results as JSON. It is run from a repository checkout and is not part of the installed package. It needs [click](https://pypi.org/project/click/), which for that reason is kept out of the QSTrader runtime dependencies and installed separately:
+
+```
+pip3 install -r requirements/scripts.txt
+python scripts/static_backtest.py \
+    --start-date 2010-01-01 \
+    --allocations "SPY:0.6,AGG:0.4" \
+    --title "60/40 US Equities/Bonds" \
+    --id "6040-us-equitiesbonds"
+```
+
+| Option | Description |
+| ------ | ----------- |
+| `--start-date YYYY-MM-DD` | Backtest start date. Required. |
+| `--end-date YYYY-MM-DD` | Backtest end date. Defaults to yesterday. |
+| `--allocations "SYM:W,..."` | Comma-separated symbol/weight pairs. Required. |
+| `--title TEXT` | Strategy title shown on the tearsheet and in the JSON. Required. |
+| `--id TEXT` | Strategy ID, used for the `<id>_monthly.json` filename. Required. |
+| `--output-dir DIR` | Directory for the JSON output. Defaults to `QSTRADER_OUTPUT_DIR` (from the environment or a `.env` file), or the current directory. Created if it does not exist. |
+| `--tearsheet` | Open the tearsheet in an interactive window. Blocks until closed. |
+| `--tearsheet-file PATH` | Save the tearsheet to this path. Needs no display, so it works on headless machines. Can be combined with `--tearsheet`. |
+
+The CSV data is read from `QSTRADER_CSV_DATA_DIR` exactly as for the examples, and the benchmark always requires `SPY` and `AGG` in addition to the symbols being allocated to.
+
 # Current Features
 
 * **Backtesting Engine** - QSTrader employs a schedule-based portfolio construction approach to systematic trading. Signal generation is decoupled from portfolio construction, risk management, execution and simulated brokerage accounting in a modular, object-oriented fashion.

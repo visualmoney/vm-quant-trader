@@ -4,9 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
-    "click>=8.0",
     "matplotlib>=3.8",
     "numpy>=2.0.0",
     "pandas>=2.2",
@@ -57,12 +56,21 @@ examples = [
     "yfinance>=1.2.0",
 ]
 
+# Only needed by the command-line scripts in scripts/, which are run from a
+# repository checkout and are not part of the distributed package. No module
+# under qstrader/ imports click, so it does not belong in the runtime
+# dependencies. Mirrors requirements/scripts.txt.
+scripts = [
+    "click>=8.0",
+]
+
 # uv syncs the 'dev' group by default, so including the other groups here
-# keeps 'uv run pytest' and 'uv run python examples/download_data.py'
-# working without any extra flags.
+# keeps 'uv run pytest', 'uv run python examples/download_data.py' and
+# 'uv run python scripts/static_backtest.py' working without any extra flags.
 dev = [
     {include-group = "test"},
     {include-group = "examples"},
+    {include-group = "scripts"},
 ]
 
 [tool.ruff.lint]
