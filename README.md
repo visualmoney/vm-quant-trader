@@ -175,6 +175,8 @@ Blank lines and `#` comments are ignored, an `export ` prefix is allowed, and qu
 | [`long_short.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/long_short.py) | Long/short leveraged treasury bond ETFs | `TLT IEI SPY` |
 | [`momentum_taa.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/momentum_taa.py) | US sector momentum, top 3 sectors | `XLB XLC XLE XLF XLI XLK XLP XLU XLV XLY SPY` |
 
+Each example is described in detail — what it demonstrates, its parameters and what to look for in the tearsheet — in [`examples/README.md`](examples/README.md) ([한국어](examples/README.ko.md)), which orders them from the simplest to the most involved.
+
 For instance, to run the sector momentum strategy:
 
 ```
