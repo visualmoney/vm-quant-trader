@@ -1,1 +1,3 @@
+# Mirrors the 'scripts' dependency group in pyproject.toml, for installing
+# with pip instead of uv. Keep the two in step -- they have drifted before.
 click>=8.0
