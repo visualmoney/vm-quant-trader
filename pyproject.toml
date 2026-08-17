@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
     "matplotlib>=3.8",
     "numpy>=2.0.0",
@@ -41,7 +41,9 @@ Documentation = "https://www.quantstart.com/qstrader/"
 Website = "https://www.quantstart.com"
 
 [dependency-groups]
-# Mirrors requirements/tests.txt, which the Dockerfiles install from.
+# The only consumer is CI, which installs from uv.lock. There is deliberately
+# no requirements/tests.txt counterpart: nothing installs the test tooling with
+# pip any more.
 test = [
     "pytest>=5.2.2",
     "pytest-cov>=2.8.1",

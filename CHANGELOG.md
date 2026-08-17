@@ -1,3 +1,9 @@
+# 0.3.7
+
+* Removes the four Dockerfiles under dockerfiles/. They were distro compatibility harnesses from 0.2.2, each ending in 'RUN pytest', and none of them could work: all four cloned mhallsmoore/qstrader rather than this repository, so they never exercised this code, and bionic, centos:8, fedora:33 and focal are all end of life with system interpreters too old for numpy>=2.0.0 and pandas>=2.2. GitHub Actions covers Python 3.10 to 3.14 against uv.lock, and uv supplies its own interpreter, so 'does this distribution's python work' is no longer a question the project needs to ask.
+* Removes requirements/base.txt and requirements/tests.txt, whose only consumers were those Dockerfiles. CI installs from uv.lock, and the runtime dependencies are declared in pyproject.toml.
+* Keeps requirements/examples.txt and requirements/scripts.txt, which the README points pip users at, and notes in both that they mirror the matching dependency group.
+
 # 0.3.6
 
 * Moves the CI workflow from actions/checkout@v4 and astral-sh/setup-uv@v5 to @v7 and @v10.0.1. Both of the old majors target Node.js 20, which GitHub Actions runners no longer provide: they were being forced onto Node.js 24 and every run carried a deprecation annotation. setup-uv is pinned to an exact version because it stopped publishing moving major tags after v7, so '@v10' does not resolve.

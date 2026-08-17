@@ -1,1 +1,3 @@
+# Mirrors the 'examples' dependency group in pyproject.toml, for installing
+# with pip instead of uv. Keep the two in step -- they have drifted before.
 yfinance>=1.2.0
