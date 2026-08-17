@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
     "click>=8.0",
     "matplotlib>=3.8",
@@ -21,14 +21,15 @@ maintainers = [
 ]
 description = "QSTrader backtesting simulation engine"
 readme = "README.md"
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 keywords = ["backtesting", "systematic trading", "algorithmic trading"]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 5 - Production/Stable",
@@ -45,8 +46,7 @@ Website = "https://www.quantstart.com"
 test = [
     "pytest>=5.2.2",
     "pytest-cov>=2.8.1",
-    "coveralls>=1.8.2",
-    "flake8>=3.7.9",
+    "ruff>=0.14",
 ]
 
 # Only needed to download price data for the scripts in examples/.
@@ -64,5 +64,20 @@ dev = [
     {include-group = "test"},
     {include-group = "examples"},
 ]
+
+[tool.ruff.lint]
+# Reproduces the rule set the retired Travis config ran as
+# 'flake8 --ignore E501,F501,W504'. E501 (line length) stays off because the
+# codebase predates any line-length policy; F501 is now enabled, since it
+# caught a real '%'-escaping bug in dollar_weighted.py. W504 has no ruff
+# equivalent and was only ever needed to silence a pycodestyle default.
+select = ["E", "W", "F"]
+ignore = ["E501"]
+
+# The E1xx/E2xx/E3xx whitespace rules are preview-gated in ruff. Without this
+# flag the lint job would be weaker than the flake8 job it replaces. CI installs
+# from uv.lock, so the ruff version -- and therefore the preview rule set -- only
+# changes when the lockfile is deliberately upgraded.
+preview = true
 
 

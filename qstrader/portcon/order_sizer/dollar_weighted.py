@@ -63,7 +63,7 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
             raise ValueError(
                 'Cash buffer percentage "%s" provided to dollar-weighted '
                 'execution algorithm is negative or '
-                'exceeds 100%.' % cash_buffer_percentage
+                'exceeds 100%%.' % cash_buffer_percentage
             )
         else:
             return cash_buffer_percentage

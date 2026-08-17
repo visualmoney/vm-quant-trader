@@ -137,12 +137,12 @@ def test_backtest_buy_and_hold(etf_filepath, capsys):
     the correct dates for execution orders when the start date is not
     a business day.
     """
-    settings.print_events=True
+    settings.print_events = True
     os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
     assets = ['EQ:GHI']
     universe = StaticUniverse(assets)
-    alpha_model = FixedSignalsAlphaModel({'EQ:GHI':1.0})
-    
+    alpha_model = FixedSignalsAlphaModel({'EQ:GHI': 1.0})
+
     start_dt = pd.Timestamp('2015-11-07 14:30:00', tz=pytz.UTC)
     end_dt = pd.Timestamp('2015-11-10 14:30:00', tz=pytz.UTC)
 
@@ -156,7 +156,7 @@ def test_backtest_buy_and_hold(etf_filepath, capsys):
         cash_buffer_percentage=0.01,
     )
     backtest.run(results=False)
-    
+
     expected_execution_text = "(2015-11-09 14:30:00+00:00) - executed order:"
     captured = capsys.readouterr()
     assert expected_execution_text in captured.out
@@ -165,7 +165,7 @@ def test_backtest_buy_and_hold(etf_filepath, capsys):
 def test_backtest_target_allocations(etf_filepath,):
     """
     """
-    settings.print_events=True
+    settings.print_events = True
     os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
 
     assets = ['EQ:ABC', 'EQ:DEF']
@@ -187,7 +187,7 @@ def test_backtest_target_allocations(etf_filepath,):
         rebalance_weekday='WED',
         long_only=True,
         cash_buffer_percentage=0.05,
-        burn_in_dt = burn_in_dt
+        burn_in_dt=burn_in_dt
     )
     backtest.run(results=False)
 

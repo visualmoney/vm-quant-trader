@@ -187,7 +187,7 @@ class PortfolioConstructionModel(object):
         # aren't in the target portfolio (and aren't cash) to
         # zero quantity within the target portfolio
         for asset in current_portfolio:
-            if type(asset) != str:
+            if type(asset) is not str:
                 if asset not in target_portfolio:
                     target_portfolio[asset] = {"quantity": 0}
 

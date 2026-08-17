@@ -5,7 +5,7 @@ from qstrader.system.rebalance.rebalance import Rebalance
 
 class BuyAndHoldRebalance(Rebalance):
     """
-    Generates a single rebalance timestamp at the first business day 
+    Generates a single rebalance timestamp at the first business day
     after the start date. Creates a single set of orders at the beginning of
     a backtest, with no further rebalances carried out.
 
@@ -22,7 +22,7 @@ class BuyAndHoldRebalance(Rebalance):
     def _is_business_day(self):
         """
         Checks if the start_dt is a business day.
-        
+
         Returns
         -------
         `boolean`

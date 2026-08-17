@@ -80,7 +80,7 @@ def test_initial_settings_for_default_simulated_broker():
     assert sb1.account_id is None
     assert sb1.base_currency == "USD"
     assert sb1.initial_funds == 0.0
-    assert type(sb1.fee_model) == ZeroFeeModel
+    assert type(sb1.fee_model) is ZeroFeeModel
 
     tcb1 = dict(
         zip(
@@ -106,7 +106,7 @@ def test_initial_settings_for_default_simulated_broker():
     assert sb2.account_id == "ACCT1234"
     assert sb2.base_currency == "GBP"
     assert sb2.initial_funds == 1e6
-    assert type(sb2.fee_model) == ZeroFeeModel
+    assert type(sb2.fee_model) is ZeroFeeModel
 
     tcb2 = dict(
         zip(

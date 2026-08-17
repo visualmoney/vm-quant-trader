@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # --locked fails the build if uv.lock has drifted from pyproject.toml,
+      # which is what keeps CI reproducible across runs.
+      - name: Install
+        run: uv sync --locked --no-default-groups --group test -p ${{ matrix.python-version }}
+
+      # .coveragerc sets fail_under, so a drop in coverage fails the build here
+      # rather than only showing up on the Coveralls dashboard afterwards.
+      - name: Test
+        run: uv run pytest --cov=qstrader
+
+      - name: Lint
+        run: uv run ruff check
+
+      # Coverage does not vary by interpreter, so only one matrix leg uploads.
+      # Reporting from all five would race and produce duplicate Coveralls
+      # builds for a single commit.
+      - name: Report coverage
+        if: matrix.python-version == '3.12'
+        run: uv run coverage lcov -o coverage.lcov
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.12'
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: coverage.lcov
