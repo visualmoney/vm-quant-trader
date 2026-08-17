@@ -83,6 +83,13 @@ pip3 install -r requirements/examples.txt
 python examples/download_data.py
 ```
 
+With [uv](https://docs.astral.sh/uv/) there is nothing extra to install. `yfinance` sits in the `examples` dependency group, which `uv sync` installs by default, and `uv run` uses the project environment without activating it:
+
+```
+uv sync
+uv run python examples/download_data.py
+```
+
 This writes `SPY.csv` and `AGG.csv` into the current directory. Now run the backtest:
 
 ```
@@ -105,7 +112,7 @@ Every example follows the same two steps: download the CSV data it needs, then r
 
 ## 1. Downloading the data
 
-`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and installed separately with `pip3 install -r requirements/examples.txt`.
+`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and installed separately with `pip3 install -r requirements/examples.txt` — or, with uv, by `uv sync`, since the same dependency is declared as the `examples` group in `pyproject.toml`.
 
 ```
 python examples/download_data.py                        # defaults to SPY and AGG
@@ -221,6 +228,17 @@ tearsheet.plot_results(filename='out/my-chart.png', show=False)
 ```
 pip3 install -r requirements/scripts.txt
 python scripts/static_backtest.py \
+    --start-date 2010-01-01 \
+    --allocations "SPY:0.6,AGG:0.4" \
+    --title "60/40 US Equities/Bonds" \
+    --id "6040-us-equitiesbonds"
+```
+
+With [uv](https://docs.astral.sh/uv/) the install step drops out. `click` is declared as the `scripts` dependency group, which `uv sync` installs by default, so the script runs straight from a checkout:
+
+```
+uv sync
+uv run python scripts/static_backtest.py \
     --start-date 2010-01-01 \
     --allocations "SPY:0.6,AGG:0.4" \
     --title "60/40 US Equities/Bonds" \
