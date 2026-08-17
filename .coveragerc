@@ -1,4 +1,10 @@
 [report]
+# The suite currently sits at 72%. The floor is set slightly below that so a
+# refactor that shuffles a few lines does not fail the build, while a genuine
+# drop in coverage does. Raise it as coverage improves; never lower it to make
+# a red build pass.
+fail_under = 70
+
 exclude_lines =
     # Have to re-enable the standard pragma
     pragma: no cover

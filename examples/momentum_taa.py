@@ -73,7 +73,7 @@ class TopNMomentumAlphaModel(AlphaModel):
             restricted to the 'Top N'.
         """
         assets = self.signals['momentum'].assets
-        
+
         # Calculate the holding-period return momenta for each asset,
         # for the particular provided momentum lookback period
         all_momenta = {

@@ -1,3 +1,13 @@
+# 0.3.4
+
+* Replaces the '.travis.yml' config with a GitHub Actions workflow at '.github/workflows/ci.yml'. Travis CI was unusable: travis-ci.org has been retired, the README badges pointed at the upstream repository rather than this one, and three of the four Python versions in the matrix (3.6, 3.7, 3.8) could not install numpy>=2.0.0 or pandas>=2.2 at all.
+* Installs with 'uv sync --locked' in CI, so builds resolve from uv.lock instead of requirements/*.txt and fail if the lockfile has drifted from pyproject.toml. This also removes the need for the PYTHONPATH export Travis used, since the project is installed rather than imported from the working directory.
+* Tests against Python 3.10 to 3.14. Raises requires-python from '>= 3.9' to '>= 3.10', since 3.9 reached end of life in October 2025 and was no longer being tested, and updates the classifiers to match the tested range.
+* Sets 'fail_under = 70' in .coveragerc, so a pull request that drops coverage below the floor fails the build instead of only showing up on a dashboard. The suite currently sits at 72%.
+* Uploads coverage to Coveralls from a single matrix leg via coverallsapp/github-action, and restores the coverage badge in the README pointing at this repository. The 'coveralls' PyPI package is dropped from the test dependencies: it read Travis-specific environment variables to identify a build, and the action supersedes it.
+* Replaces flake8 with ruff, configured under [tool.ruff.lint] in pyproject.toml to reproduce the previous 'flake8 --ignore E501,F501,W504' rule set. Preview mode is enabled so that the whitespace rules the flake8 job enforced remain covered.
+* Fixes the 14 lint violations that would have failed the build on its first run, including a '%'-escaping bug in DollarWeightedCashBufferedOrderSizer._check_cash_buffer_percentage, where the intended 'cash buffer percentage out of range' message was replaced at runtime by 'ValueError: incomplete format'.
+
 # 0.3.3
 
 * Moves the '.env' loader from examples/env_file.py into the package as qstrader/env_file.py, so that both examples/ and scripts/ can import it without sys.path manipulation. The search now walks upwards from the current directory rather than falling back to a path relative to the package, which was meaningless for an installed copy. Nothing is loaded on import; callers invoke load_env_file() explicitly.
