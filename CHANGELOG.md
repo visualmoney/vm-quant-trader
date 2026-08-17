@@ -1,3 +1,7 @@
+# 0.3.6
+
+* Moves the CI workflow from actions/checkout@v4 and astral-sh/setup-uv@v5 to @v7 and @v10. Both of the old majors target Node.js 20, which GitHub Actions runners no longer provide: they were being forced onto Node.js 24 and every run carried a deprecation annotation.
+
 # 0.3.5
 
 * Moves click out of the runtime dependencies and into a 'scripts' dependency group, mirrored by requirements/scripts.txt. No module under qstrader/ imports click: its only user is scripts/static_backtest.py, which the wheel does not ship, so every installation was pulling in a dependency it could not use. This follows the same reasoning that keeps yfinance out of the runtime dependencies. The 'dev' group includes the new group, so 'uv run python scripts/static_backtest.py' keeps working.
