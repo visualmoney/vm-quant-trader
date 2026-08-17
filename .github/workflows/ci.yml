@@ -16,7 +16,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v10
+      # Pinned to an exact version, not a floating major: setup-uv stopped
+      # publishing moving major tags after v7, so 'astral-sh/setup-uv@v10'
+      # does not resolve.
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
 

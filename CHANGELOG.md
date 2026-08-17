@@ -1,6 +1,6 @@
 # 0.3.6
 
-* Moves the CI workflow from actions/checkout@v4 and astral-sh/setup-uv@v5 to @v7 and @v10. Both of the old majors target Node.js 20, which GitHub Actions runners no longer provide: they were being forced onto Node.js 24 and every run carried a deprecation annotation.
+* Moves the CI workflow from actions/checkout@v4 and astral-sh/setup-uv@v5 to @v7 and @v10.0.1. Both of the old majors target Node.js 20, which GitHub Actions runners no longer provide: they were being forced onto Node.js 24 and every run carried a deprecation annotation. setup-uv is pinned to an exact version because it stopped publishing moving major tags after v7, so '@v10' does not resolve.
 
 # 0.3.5
 
