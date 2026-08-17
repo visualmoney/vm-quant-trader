@@ -160,7 +160,7 @@ python examples/momentum_taa.py
 | [`download_data.py`](download_data.py) | Yahoo! Finance에서 일봉 OHLCV를 받아 QSTrader용 CSV로 저장하는 독립 CLI. 직접 실행하며, 어떤 파일도 이를 import 하지 않습니다. `yfinance`가 필요합니다 — `pip3 install -r requirements/examples.txt` |
 | [`tearsheet_output.py`](tearsheet_output.py) | 예제 5개가 모두 import 합니다. 공통 인자 `--show` / `--no-save` / `--output` / `--output-dir`를 제공하고 tearsheet 저장 위치를 결정합니다 |
 
-두 파일이 함께 쓰는 `.env` 로딩 기능은 패키지 쪽인 [`qstrader/env_file.py`](../qstrader/env_file.py)에 있습니다. `scripts/static_backtest.py`도 이를 필요로 하기 때문입니다.
+두 파일이 함께 쓰는 `.env` 로딩 기능은 패키지 쪽인 [`qstrader/env_file.py`](../qstrader/env_file.py)에 있습니다. [`scripts/static_backtest.py`](../scripts/static_backtest.py)도 이를 필요로 하기 때문입니다. 이 스크립트는 자산 배분을 코드가 아닌 커맨드라인으로 받으며, 설명은 [메인 README](../README.md#4-the-static-allocation-script)에 있습니다. `click`이 필요합니다 — `pip3 install -r requirements/scripts.txt`
 
 ## 공통 옵션
 

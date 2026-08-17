@@ -160,7 +160,7 @@ These two files live in `examples/` but are **not** examples. They exist so the 
 | [`download_data.py`](download_data.py) | Standalone CLI that downloads daily OHLCV bars from Yahoo! Finance into QSTrader-compatible CSVs. Run it directly; nothing imports it. Needs `yfinance` — `pip3 install -r requirements/examples.txt`. |
 | [`tearsheet_output.py`](tearsheet_output.py) | Imported by all five examples. Supplies the shared `--show` / `--no-save` / `--output` / `--output-dir` arguments and decides where the tearsheet is written. |
 
-The `.env` loading both of them rely on lives in the package itself, at [`qstrader/env_file.py`](../qstrader/env_file.py), because `scripts/static_backtest.py` needs it too.
+The `.env` loading both of them rely on lives in the package itself, at [`qstrader/env_file.py`](../qstrader/env_file.py), because [`scripts/static_backtest.py`](../scripts/static_backtest.py) needs it too. That script takes the allocation on the command line instead of in code and is documented in the [main README](../README.md#4-the-static-allocation-script); it needs `click` — `pip3 install -r requirements/scripts.txt`.
 
 ## Common options
 
