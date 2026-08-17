@@ -1,3 +1,11 @@
+# 0.3.8
+
+* Removes requirements/ entirely. Both remaining files held a single package that duplicated a dependency group, and pip 25.1 can install those groups directly with 'pip install --group', so pyproject.toml is now the only place any dependency is declared and the drift 0.3.2 had to repair can no longer happen. The README, examples/README.md and examples/README.ko.md give the uv, modern pip and older pip forms in each of the five places that previously pointed at a requirements file.
+* Restructures the Installation section around uv, which is what this repository's lockfile and CI are built on, with pip and conda kept below it. The section previously opened by recommending an Anaconda download.
+* Corrects the supported Python versions. The README still advertised 3.9 through 3.12 and offered 'conda create -n backtest python==3.9', which since 0.3.4 has produced an environment QSTrader cannot be installed into. It now states 3.10 or later, tested through 3.14, in one place.
+* Replaces the Python version badge, which read the upstream package's metadata from PyPI and so could never agree with this repository's supported range.
+* Normalises the heading levels: the README had nine level one headings, of which only the title should be one. Anchors are generated from heading text, so the inbound links from examples/README.md are unaffected.
+
 # 0.3.7
 
 * Removes the four Dockerfiles under dockerfiles/. They were distro compatibility harnesses from 0.2.2, each ending in 'RUN pytest', and none of them could work: all four cloned mhallsmoore/qstrader rather than this repository, so they never exercised this code, and bionic, centos:8, fedora:33 and focal are all end of life with system interpreters too old for numpy>=2.0.0 and pandas>=2.2. GitHub Actions covers Python 3.10 to 3.14 against uv.lock, and uv supplies its own interpreter, so 'does this distribution's python work' is no longer a question the project needs to ask.

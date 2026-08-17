@@ -4,7 +4,7 @@
 | ------------- | ------------- |
 | Test Status   | [![CI](https://img.shields.io/github/actions/workflow/status/visualmoney/vm-quant-trader/ci.yml?branch=master&style=flat-square&label=CI)](https://github.com/visualmoney/vm-quant-trader/actions/workflows/ci.yml) [![Coverage Status](https://img.shields.io/coverallsCoverage/github/visualmoney/vm-quant-trader?branch=master&style=flat-square&label=Coverage)](https://coveralls.io/github/visualmoney/vm-quant-trader?branch=master) |
 | Version Info  | [![PyPI](https://img.shields.io/pypi/v/qstrader?style=flat-square&label=PyPI&color=blue)](https://pypi.org/project/qstrader) [![PyPI Downloads](https://img.shields.io/pypi/dm/qstrader?style=flat-square&label=PyPI%20Downloads)](https://pypi.org/project/qstrader) |
-| Compatibility | [![Python Version](https://img.shields.io/pypi/pyversions/qstrader?style=flat-square&label=Python%20Versions)](https://pypi.org/project/qstrader) |
+| Compatibility | [![Python Version](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue?style=flat-square)](https://github.com/visualmoney/vm-quant-trader/actions/workflows/ci.yml) |
 | License       | ![GitHub](https://img.shields.io/github/license/mhallsmoore/qstrader?style=flat-square&label=License) |
 
 QSTrader is a free Python-based open-source modular schedule-driven backtesting framework for long-short equities and ETF based systematic trading strategies.
@@ -15,31 +15,62 @@ The default modules provide useful functionality for certain types of systematic
 
 The software is currently under active development and is provided under a permissive "MIT" license.
 
-# Previous Version and Advanced Algorithmic Trading
+## Previous Version and Advanced Algorithmic Trading
 
 Please note that the previous version of QSTrader, which is utilised through the **Advanced Algorithmic Trading** ebook, can be found along with the appropriate installation instructions [here](https://github.com/mhallsmoore/qstrader/tree/advanced-algorithmic-trading).
 
 It has recently been updated to support Python 3.9, 3.10, 3.11 and 3.12 with up to date package dependencies.
 
-# Installation
+## Installation
 
-Installation requires a Python3 environment. The simplest approach is to download a self-contained scientific Python distribution such as the [Anaconda Individual Edition](https://www.anaconda.com/products/individual#Downloads). You can then install QSTrader into an isolated [virtual environment](https://docs.python.org/3/tutorial/venv.html#virtual-environments-and-packages) using pip as shown below.
+QSTrader requires **Python 3.10 or later**. Continuous integration tests every release against Python 3.10, 3.11, 3.12, 3.13 and 3.14.
+
+Whichever tool you prefer, install QSTrader into an isolated [virtual environment](https://docs.python.org/3/tutorial/venv.html#virtual-environments-and-packages) rather than alongside your system Python.
 
 Any issues with installation should be reported to the development team as issues [here](https://github.com/mhallsmoore/qstrader/issues).
 
-## conda
+### uv
+
+[uv](https://docs.astral.sh/uv/) manages the interpreter, the virtual environment and the dependencies with one tool, and will download a suitable Python itself if you do not already have one.
+
+To use QSTrader as a library in your own project:
+
+```
+uv add qstrader
+```
+
+To run the bundled examples and scripts, work from a clone instead. `uv sync` creates `.venv`, installs QSTrader and every dependency group, and resolves them from the checked-in `uv.lock`, so you get the same versions CI does:
+
+```
+git clone https://github.com/mhallsmoore/qstrader.git
+cd qstrader
+uv sync
+```
+
+Prefix commands with `uv run` to use that environment without activating it:
+
+```
+uv run python examples/sixty_forty.py
+```
+
+### pip
+
+[venv](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments) handles the environment creation and [pip](https://docs.python.org/3/tutorial/venv.html#managing-packages-with-pip) the package installation.
+
+```
+python -m venv .venv
+source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip3 install qstrader
+```
+
+### conda
 
 [conda](https://docs.conda.io/projects/conda/en/latest/) is a command-line tool that comes with the Anaconda distribution. It allows you to manage virtual environments as well as packages _using the same tool_.
 
-The following command will create a brand new environment called `backtest`.
+The following command creates a brand new environment called `backtest`. Name a supported interpreter explicitly, since the conda default may be older than QSTrader requires:
 
 ```
-conda create -n backtest python
-```
-This will use the conda default Python version. At time of writing this was Python 3.12. QSTrader currently supports Python 3.9, 3.10, 3.11 and 3.12. Optionally you can specify a python version by substituting python==3.9 into the command as follows:
-
-```
-conda create -n backtest python==3.9
+conda create -n backtest python=3.12
 ```
 
 In order to start using QSTrader, you need to activate this new environment and install QSTrader using pip.
@@ -49,21 +80,11 @@ conda activate backtest
 pip3 install qstrader
 ```
 
-## pip
-
-Alternatively, you can use [venv](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments) to handle the environment creation and [pip](https://docs.python.org/3/tutorial/venv.html#managing-packages-with-pip) to handle the package installation.
-
-```
-python -m venv backtest
-source backtest/bin/activate  # Need to activate environment before installing package
-pip3 install qstrader
-```
-
-# Full Documentation
+## Full Documentation
 
 Comprehensive documentation and beginner tutorials for QSTrader can be found on QuantStart.com at [https://www.quantstart.com/qstrader/](https://www.quantstart.com/qstrader/).
 
-# Quickstart
+## Quickstart
 
 The QSTrader repository provides some simple example strategies at [/examples](https://github.com/mhallsmoore/qstrader/tree/master/examples).
 
@@ -78,10 +99,19 @@ cd qstrader
 
 The 60/40 script makes use of OHLC 'daily bar' data from Yahoo! Finance. In particular it requires the [SPY](https://finance.yahoo.com/quote/SPY/history?p=SPY) and [AGG](https://finance.yahoo.com/quote/AGG/history?p=AGG) ETF data. The bundled `download_data.py` helper fetches the full history for each and writes it into the CSV format expected by QSTrader:
 
+It needs [yfinance](https://pypi.org/project/yfinance/), which is declared as the `examples` dependency group rather than a runtime dependency, since a backtest never uses it:
+
 ```
-pip3 install -r requirements/examples.txt
+uv sync                          # uv installs the group already
+uv run python examples/download_data.py
+```
+
+```
+pip install --group examples     # pip 25.1 or later
 python examples/download_data.py
 ```
+
+On an older pip, name the package directly: `pip install "yfinance>=1.2.0"`.
 
 This writes `SPY.csv` and `AGG.csv` into the current directory. Now run the backtest:
 
@@ -99,13 +129,13 @@ You can examine the commented ``sixty_forty.py`` file to see the current QSTrade
 
 If you have any questions about the installation or example usage then please feel free to email [support@quantstart.com](mailto:support@quantstart.com) or raise an issue [here](https://github.com/mhallsmoore/qstrader/issues).
 
-# Running the Examples
+## Running the Examples
 
 Every example follows the same two steps: download the CSV data it needs, then run the script. Both are run from the repository root.
 
-## 1. Downloading the data
+### 1. Downloading the data
 
-`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and installed separately with `pip3 install -r requirements/examples.txt`.
+`examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and declared as the `examples` dependency group instead. `uv sync` installs that group by default; on pip 25.1 or later use `pip install --group examples`, and on an older pip `pip install "yfinance>=1.2.0"`.
 
 ```
 python examples/download_data.py                        # defaults to SPY and AGG
@@ -136,7 +166,7 @@ Any directory that does not yet exist is created automatically, including nested
 
 Keeping downloaded data and generated results apart is worth the one-line setting: `data` holds what was fetched, `out` holds what a backtest produced. `out` can then be deleted at any time without losing the price history, which takes a while to download again. Both `/data/` and `out` are listed in `.gitignore`.
 
-## Configuration via a .env file
+### Configuration via a .env file
 
 Rather than exporting variables in every shell, the examples will also read them from a `.env` file. This needs no extra packages — QSTrader parses the file itself, in `qstrader/env_file.py`. Nothing is loaded implicitly: importing QSTrader never touches the environment, and only the scripts under `examples/` and `scripts/` call the loader.
 
@@ -165,7 +195,7 @@ Variables already present in the environment always take precedence, so an `expo
 
 Blank lines and `#` comments are ignored, an `export ` prefix is allowed, and quoted values are supported. Note that `.env` is listed in `.gitignore` and should not be committed — commit changes to `.env.example` instead.
 
-## 2. Running a backtest
+### 2. Running a backtest
 
 | Example | Strategy | Required symbols |
 | ------- | -------- | ---------------- |
@@ -184,7 +214,7 @@ python examples/download_data.py --data XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY,
 python examples/momentum_taa.py
 ```
 
-## 3. Tearsheet output
+### 3. Tearsheet output
 
 By default each example saves its tearsheet to `out/tearsheet-<example>-<yyyymmdd-hhmmss>.png` and does not open a window, so the examples run unchanged on headless machines. The timestamp means repeated runs never overwrite each other.
 
@@ -214,18 +244,20 @@ tearsheet = TearsheetStatistics(
 tearsheet.plot_results(filename='out/my-chart.png', show=False)
 ```
 
-## 4. The static allocation script
+### 4. The static allocation script
 
 `scripts/static_backtest.py` backtests an arbitrary fixed-weight portfolio against the 60/40 benchmark, taking the allocation on the command line rather than in code, and writes the results as JSON. It is run from a repository checkout and is not part of the installed package. It needs [click](https://pypi.org/project/click/), which for that reason is kept out of the QSTrader runtime dependencies and installed separately:
 
 ```
-pip3 install -r requirements/scripts.txt
-python scripts/static_backtest.py \
+uv sync                          # uv installs the group already
+uv run python scripts/static_backtest.py \
     --start-date 2010-01-01 \
     --allocations "SPY:0.6,AGG:0.4" \
     --title "60/40 US Equities/Bonds" \
     --id "6040-us-equitiesbonds"
 ```
+
+With pip 25.1 or later, `pip install --group scripts` reads the same declaration out of `pyproject.toml`; on an older pip, `pip install "click>=8.0"`. Then run the script with `python` in place of `uv run python`.
 
 | Option | Description |
 | ------ | ----------- |
@@ -240,7 +272,7 @@ python scripts/static_backtest.py \
 
 The CSV data is read from `QSTRADER_CSV_DATA_DIR` exactly as for the examples, and the benchmark always requires `SPY` and `AGG` in addition to the symbols being allocated to.
 
-# Current Features
+## Current Features
 
 * **Backtesting Engine** - QSTrader employs a schedule-based portfolio construction approach to systematic trading. Signal generation is decoupled from portfolio construction, risk management, execution and simulated brokerage accounting in a modular, object-oriented fashion.
 
@@ -250,7 +282,7 @@ The CSV data is read from `QSTRADER_CSV_DATA_DIR` exactly as for the examples, a
 
 * **Software Development** - QSTrader is written in the Python programming language for straightforward cross-platform support. QSTrader contains a suite of unit and integration tests for the majority of its modules. Tests are continually added for new features.
 
-# License Terms
+## License Terms
 
 Copyright (c) 2015-2024 QuantStart.com, QuarkGluon Ltd
 
@@ -260,6 +292,6 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-# Trading Disclaimer
+## Trading Disclaimer
 
 Trading equities on margin carries a high level of risk, and may not be suitable for all investors. Past performance is not indicative of future results. The high degree of leverage can work against you as well as for you. Before deciding to invest in equities you should carefully consider your investment objectives, level of experience, and risk appetite. The possibility exists that you could sustain a loss of some or all of your initial investment and therefore you should not invest money that you cannot afford to lose. You should be aware of all the risks associated with equities trading, and seek advice from an independent financial advisor if you have any doubts.
