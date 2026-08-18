@@ -22,3 +22,4 @@ QSTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | 보고서 | 요약 |
 | --- | --- |
 | [20260818-01-codebase-comprehension-strategy.md](dev/reports/20260818-01-codebase-comprehension-strategy.md) | 아키텍처 지도, 4단계 학습 경로, **실습 과제 10종(T1~T10)**, 확장 지점 15개, 커버리지 공백 및 기술부채 지도 (기준: `b94c6c0` / v0.3.10) |
+| [20260818-02-transaction-cost-consolidation.md](dev/reports/20260818-02-transaction-cost-consolidation.md) | `Transaction.cost_with_commission`를 `Portfolio`가 사용하도록 통합하는 **구현 준비서** — 동치성 분석, 변경 설계, 테스트 계획, CHANGELOG 초안 (미구현) |
