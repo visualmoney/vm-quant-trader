@@ -90,33 +90,28 @@ def test_prices_pad_backwards_to_the_last_known_timestamp(timestamp, expected):
     assert source.get_ask(_utc(timestamp), 'EQ:ABC') == pytest.approx(expected)
 
 
-def test_price_before_the_first_bar_returns_the_final_price():
+def test_price_before_the_first_bar_is_nan():
     """
-    Pins a defect: a timestamp earlier than the first bar returns the LAST
-    price of the series, which is look-ahead of the worst kind.
+    Checks that a timestamp earlier than the first bar has no price.
 
+    Until 0.3.13 it returned the LAST price of the series, because
     'index.get_indexer(..., method="pad")' returns -1 when nothing precedes
-    the timestamp, and '.iloc[[-1]]' then selects the final row instead of
-    raising. The 'except KeyError: return np.nan' branch, commented
-    '# Before start date', is therefore unreachable.
+    the timestamp and iloc takes -1 as the final row. A backtest starting
+    before an asset's data began therefore valued and traded that asset at a
+    price from the end of the sample.
 
-    This matters because LongShortLeveragedOrderSizer raises on a NaN price
-    with the message 'This can occur if the chosen backtest start date is
-    earlier than the first available price for a particular asset' - a guard
-    that can never fire while this holds.
-
-    This test documents the behaviour rather than endorsing it. When the
-    lookup is fixed, replace it with an np.isnan assertion.
+    The NaN matters beyond correctness: both order sizers raise on a NaN
+    price with a message naming this exact situation, and that guard could
+    not fire while the lookup answered with a number.
     """
     source = InMemoryDailyBarDataSource(
         {'EQ:ABC': BARS}, adjust_prices=False
     )
 
-    final_price = 125.0
-    assert source.get_bid(_utc('2019-06-01'), 'EQ:ABC') == pytest.approx(final_price)
-    assert source.get_ask(_utc('2019-06-01'), 'EQ:ABC') == pytest.approx(final_price)
+    assert np.isnan(source.get_bid(_utc('2019-06-01'), 'EQ:ABC'))
+    assert np.isnan(source.get_ask(_utc('2019-06-01'), 'EQ:ABC'))
 
-    # For contrast, an unknown asset does raise rather than mislead
+    # An unknown asset raises instead, which the data handler turns into NaN
     with pytest.raises(KeyError):
         source.get_bid(_utc('2020-01-02 14:30'), 'EQ:NOPE')
 

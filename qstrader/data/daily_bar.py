@@ -123,12 +123,14 @@ class DailyBarDataSource(DataSource):
             The bid price.
         """
         bid_ask_df = self.asset_bid_ask_frames[asset]
-        bid_series = bid_ask_df.iloc[bid_ask_df.index.get_indexer([dt], method='pad')]['Bid']
-        try:
-            bid = bid_series.iloc[0]
-        except KeyError:  # Before start date
+
+        # 'pad' returns -1 when no row precedes the timestamp. Passing that to
+        # iloc would select the final row, so the query would answer with a
+        # price from the end of the series
+        index = bid_ask_df.index.get_indexer([dt], method='pad')[0]
+        if index < 0:  # Before the first bar
             return np.nan
-        return bid
+        return bid_ask_df['Bid'].iloc[index]
 
     @functools.lru_cache(maxsize=1024 * 1024)
     def get_ask(self, dt, asset):
@@ -148,12 +150,14 @@ class DailyBarDataSource(DataSource):
             The ask price.
         """
         bid_ask_df = self.asset_bid_ask_frames[asset]
-        ask_series = bid_ask_df.iloc[bid_ask_df.index.get_indexer([dt], method='pad')]['Ask']
-        try:
-            ask = ask_series.iloc[0]
-        except KeyError:  # Before start date
+
+        # 'pad' returns -1 when no row precedes the timestamp. Passing that to
+        # iloc would select the final row, so the query would answer with a
+        # price from the end of the series
+        index = bid_ask_df.index.get_indexer([dt], method='pad')[0]
+        if index < 0:  # Before the first bar
             return np.nan
-        return ask
+        return bid_ask_df['Ask'].iloc[index]
 
     def get_assets_historical_closes(self, start_dt, end_dt, assets, adjusted=False):
         """
