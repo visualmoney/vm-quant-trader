@@ -25,3 +25,4 @@ QSTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [20260818-02-transaction-cost-consolidation.md](dev/reports/20260818-02-transaction-cost-consolidation.md) | `Transaction.cost_with_commission`를 `Portfolio`가 사용하도록 통합하는 **구현 준비서** — 동치성 분석, 변경 설계, 테스트 계획, CHANGELOG 초안 (미구현) |
 | [20260818-03-performance-module-defects.md](dev/reports/20260818-03-performance-module-defects.md) | `statistics/performance.py`에서 발견한 **결함 2건** — 발생하지 않는 `ValueError`, 최대 낙폭 과소 보고(실측 최대 5.44%p). 특성 테스트로 고정, 수정 미실시 |
 | [20260818-04-execution-and-cost-layer-limits.md](dev/reports/20260818-04-execution-and-cost-layer-limits.md) | T7 실험 — `FeeModel` / `ExecutionAlgorithm` 교체. 사이저의 **수수료 과대 추정**(성과 손실의 22.2%), 실행 알고리즘 주입 지점 부재, 시간 분할 실행 불가의 구조적 원인 |
+| [20260818-05-data-source-contract.md](dev/reports/20260818-05-data-source-contract.md) | T8 실험 — `DataSource` ABC 신설과 인메모리 구현체 추가. 역추출한 계약, `adjusted` 인자 불일치 해소, **시작일 이전 조회가 미래 가격을 반환하는 룩어헤드 결함** |
