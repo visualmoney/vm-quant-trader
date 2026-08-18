@@ -35,13 +35,13 @@ Any issues with installation should be reported to the development team as issue
 
 To use QSTrader as a library in your own project:
 
-```
+```bash
 uv add qstrader
 ```
 
 To run the bundled examples and scripts, work from a clone instead. `uv sync` creates `.venv`, installs QSTrader and every dependency group, and resolves them from the checked-in `uv.lock`, so you get the same versions CI does:
 
-```
+```bash
 git clone https://github.com/mhallsmoore/qstrader.git
 cd qstrader
 uv sync
@@ -49,7 +49,7 @@ uv sync
 
 Prefix commands with `uv run` to use that environment without activating it:
 
-```
+```bash
 uv run python examples/sixty_forty.py
 ```
 
@@ -57,7 +57,7 @@ uv run python examples/sixty_forty.py
 
 [venv](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments) handles the environment creation and [pip](https://docs.python.org/3/tutorial/venv.html#managing-packages-with-pip) the package installation.
 
-```
+```bash
 python -m venv .venv
 source .venv/bin/activate    # Windows: .venv\Scripts\activate
 pip3 install qstrader
@@ -69,13 +69,13 @@ pip3 install qstrader
 
 The following command creates a brand new environment called `backtest`. Name a supported interpreter explicitly, since the conda default may be older than QSTrader requires:
 
-```
+```bash
 conda create -n backtest python=3.12
 ```
 
 In order to start using QSTrader, you need to activate this new environment and install QSTrader using pip.
 
-```
+```bash
 conda activate backtest
 pip3 install qstrader
 ```
@@ -92,7 +92,7 @@ Within this quickstart section a classic 60/40 equities/bonds portfolio will be 
 
 Assuming that an appropriate Python environment exists and QSTrader has been installed (see **Installation** above), make sure to activate the virtual environment and clone the repository:
 
-```
+```bash
 git clone https://github.com/mhallsmoore/qstrader.git
 cd qstrader
 ```
@@ -101,12 +101,12 @@ The 60/40 script makes use of OHLC 'daily bar' data from Yahoo! Finance. In part
 
 It needs [yfinance](https://pypi.org/project/yfinance/), which is declared as the `examples` dependency group rather than a runtime dependency, since a backtest never uses it:
 
-```
+```bash
 uv sync                          # uv installs the group already
 uv run python examples/download_data.py
 ```
 
-```
+```bash
 pip install --group examples     # pip 25.1 or later
 python examples/download_data.py
 ```
@@ -115,7 +115,7 @@ On an older pip, name the package directly: `pip install "yfinance>=1.2.0"`.
 
 This writes `SPY.csv` and `AGG.csv` into the current directory. Now run the backtest:
 
-```
+```bash
 python examples/sixty_forty.py
 ```
 
@@ -137,7 +137,7 @@ Every example follows the same two steps: download the CSV data it needs, then r
 
 `examples/download_data.py` downloads daily OHLCV bars from Yahoo! Finance and writes one QSTrader-compatible `<SYMBOL>.csv` per ticker. It needs [yfinance](https://pypi.org/project/yfinance/), which is kept out of the QSTrader runtime dependencies and declared as the `examples` dependency group instead. `uv sync` installs that group by default; on pip 25.1 or later use `pip install --group examples`, and on an older pip `pip install "yfinance>=1.2.0"`.
 
-```
+```bash
 python examples/download_data.py                        # defaults to SPY and AGG
 python examples/download_data.py --data SPY AGG QQQ     # space separated
 python examples/download_data.py --data SPY,AGG,QQQ     # or comma separated
@@ -156,7 +156,7 @@ python examples/download_data.py --help
 
 The examples read their CSV files from `QSTRADER_CSV_DATA_DIR`, falling back to the current directory, so the downloader and the example must agree on a location. Keeping the default for both — running each from the repository root — is the simplest option. To store the data elsewhere, set the environment variable once and both will honour it:
 
-```
+```bash
 export QSTRADER_CSV_DATA_DIR=data
 python examples/download_data.py
 python examples/sixty_forty.py
@@ -172,17 +172,17 @@ Rather than exporting variables in every shell, the examples will also read them
 
 A documented template is provided as [`.env.example`](https://github.com/mhallsmoore/qstrader/blob/master/.env.example). Copy it and edit to suit:
 
-```
+```bash
 cp .env.example .env
 ```
 
-```
+```ini
 # .env
 QSTRADER_CSV_DATA_DIR=data
 QSTRADER_OUTPUT_DIR=out
 ```
 
-```
+```bash
 python examples/download_data.py     # writes into data/
 python examples/sixty_forty.py       # reads from data/, saves the tearsheet into out/
 ```
@@ -209,7 +209,7 @@ Each example is described in detail — what it demonstrates, its parameters and
 
 For instance, to run the sector momentum strategy:
 
-```
+```bash
 python examples/download_data.py --data XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY,SPY
 python examples/momentum_taa.py
 ```
@@ -218,7 +218,7 @@ python examples/momentum_taa.py
 
 By default each example saves its tearsheet to `out/tearsheet-<example>-<yyyymmdd-hhmmss>.png` and does not open a window, so the examples run unchanged on headless machines. The timestamp means repeated runs never overwrite each other.
 
-```
+```bash
 python examples/sixty_forty.py                              # save only (default)
 python examples/sixty_forty.py --show                       # save and display
 python examples/sixty_forty.py --show --no-save             # display only
@@ -248,7 +248,7 @@ tearsheet.plot_results(filename='out/my-chart.png', show=False)
 
 `scripts/static_backtest.py` backtests an arbitrary fixed-weight portfolio against the 60/40 benchmark, taking the allocation on the command line rather than in code, and writes the results as JSON. It is run from a repository checkout and is not part of the installed package. It needs [click](https://pypi.org/project/click/), which for that reason is kept out of the QSTrader runtime dependencies and installed separately:
 
-```
+```bash
 uv sync                          # uv installs the group already
 uv run python scripts/static_backtest.py \
     --start-date 2010-01-01 \

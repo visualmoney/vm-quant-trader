@@ -1,3 +1,7 @@
+# 0.3.10
+
+* Tags the code fences in README.md. Eighteen of the nineteen blocks were untagged and so rendered without syntax highlighting, while examples/README.md and examples/README.ko.md have tagged theirs since they were written. Seventeen are shell commands and take 'bash'; the block showing the contents of a '.env' file takes 'ini', since it is file content rather than commands; the Python snippet was already tagged. No text inside any block changed.
+
 # 0.3.9
 
 * Converts the fifteen abstract base classes from the Python 2 '__metaclass__ = ABCMeta' idiom to 'abc.ABC'. Under Python 3 that assignment is an inert class attribute, so ABCMeta was never applied and not one of the 30 @abstractmethod markers in the package had any effect: every base class could be instantiated directly, and a subclass that forgot to implement the interface failed later, at the call site, with NotImplementedError rather than at construction. Asset stays instantiable because it declares no abstract methods, which is unchanged behaviour.
