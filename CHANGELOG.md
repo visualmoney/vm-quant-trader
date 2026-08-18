@@ -1,3 +1,8 @@
+# 0.3.14
+
+* Adds a status column to the report index in docs/README.md. Report bodies are snapshots and are never updated, which is deliberate, but it left the index describing report 02 as unimplemented and report 03 as unfixed after both had landed in 0.3.13, and describing the defects in reports 04 and 05 as though they were current. Status now lives in one structured column rather than inside prose that would have to be rewritten on every fix, so a reader can tell whether a report's findings still stand without opening it.
+* Adds the same follow-up note to report 01 that reports 02 to 05 already carry, recording that its §8-1 was resolved in 0.3.12 and part of §8-7 in 0.3.13, that tasks T5 to T8 have been carried out, and that its figures are those of v0.3.10.
+
 # 0.3.13
 
 * Raises a ValueError from aggregate_returns for an unrecognised 'convert_to'. The branch constructed the exception and never raised it, so a typo returned None and surfaced much later as an AttributeError with the real cause absent from the traceback, or not at all if the caller treated the None as falsy. The message now names the value that was supplied.
