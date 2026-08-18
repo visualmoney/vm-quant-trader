@@ -42,6 +42,13 @@ class QuantTradingSystem:
     long_only : `Boolean`, optional
         Whether to invoke the long only order sizer or allow
         long/short leveraged portfolios. Defaults to long/short leveraged.
+    optimiser : `PortfolioOptimiser`, optional
+        The optimiser used to generate target weights. Defaults to a
+        FixedWeightPortfolioOptimiser, which passes the alpha model's
+        weights through unchanged.
+    execution_algo : `ExecutionAlgorithm`, optional
+        The execution strategy applied to the rebalance orders. Defaults to
+        a MarketOrderExecutionAlgorithm, which submits them unmodified.
     submit_orders : `Boolean`, optional
         Whether to actually submit generated orders. Defaults to no submission.
     """
@@ -56,6 +63,8 @@ class QuantTradingSystem:
         *args,
         risk_model=None,
         long_only=False,
+        optimiser=None,
+        execution_algo=None,
         submit_orders=False,
         **kwargs
     ):
@@ -66,6 +75,8 @@ class QuantTradingSystem:
         self.alpha_model = alpha_model
         self.risk_model = risk_model
         self.long_only = long_only
+        self.optimiser = optimiser
+        self.execution_algo = execution_algo
         self.submit_orders = submit_orders
         self._initialise_models(**kwargs)
 
@@ -118,15 +129,15 @@ class QuantTradingSystem:
         construction and the execution.
 
         TODO: Add TransactionCostModel
-        TODO: Ensure this is dynamically generated from config.
         """
         # Determine the appropriate order sizing mechanism
         order_sizer = self._create_order_sizer(**kwargs)
 
-        # TODO: Allow optimiser to be generated from config
-        optimiser = FixedWeightPortfolioOptimiser(
-            data_handler=self.data_handler
-        )
+        optimiser = self.optimiser
+        if optimiser is None:
+            optimiser = FixedWeightPortfolioOptimiser(
+                data_handler=self.data_handler
+            )
 
         # Generate the portfolio construction
         self.portfolio_construction_model = PortfolioConstructionModel(
@@ -141,7 +152,9 @@ class QuantTradingSystem:
         )
 
         # Execution
-        execution_algo = MarketOrderExecutionAlgorithm()
+        execution_algo = self.execution_algo
+        if execution_algo is None:
+            execution_algo = MarketOrderExecutionAlgorithm()
         self.execution_handler = ExecutionHandler(
             self.broker,
             self.broker_portfolio_id,
