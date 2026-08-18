@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class Transaction(object):
+class Transaction:
     """
     Handles the transaction of an asset, as used in the
     Position class.

@@ -3,7 +3,7 @@ import uuid
 import numpy as np
 
 
-class Order(object):
+class Order:
     """
     Represents sending an order from a trading algo entity
     to a brokerage to execute.

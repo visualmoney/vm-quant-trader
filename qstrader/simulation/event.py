@@ -1,4 +1,4 @@
-class SimulationEvent(object):
+class SimulationEvent:
     """
     Stores a timestamp and event type string associated with
     a simulation event.

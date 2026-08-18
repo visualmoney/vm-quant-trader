@@ -1,7 +1,7 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 
-class Statistics(object):
+class Statistics(ABC):
     """
     Statistics is an abstract class providing an interface for
     all inherited statistic classes (live, historic, custom, etc).
@@ -18,21 +18,35 @@ class Statistics(object):
     however the example given is suitable for longer timeframes.
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def update(self, dt):
         """
         Update all the statistics according to values of the portfolio
         and open positions. This should be called from within the
         event loop.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The timestamp to update the statistics to.
         """
         raise NotImplementedError("Should implement update()")
 
     @abstractmethod
-    def get_results(self):
+    def get_results(self, equity_df):
         """
         Return a dict containing all statistics.
+
+        Parameters
+        ----------
+        equity_df : `pd.DataFrame`
+            The datetime-indexed equity curve, carrying an 'Equity'
+            column, to calculate the statistics from.
+
+        Returns
+        -------
+        `dict`
+            The calculated statistics.
         """
         raise NotImplementedError("Should implement get_results()")
 
@@ -47,5 +61,10 @@ class Statistics(object):
     def save(self, filename):
         """
         Save statistics results to filename
+
+        Parameters
+        ----------
+        filename : `str`
+            The path to save the statistics results to.
         """
         raise NotImplementedError("Should implement save()")

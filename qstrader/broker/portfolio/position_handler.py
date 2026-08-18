@@ -3,7 +3,7 @@ from collections import OrderedDict
 from qstrader.broker.portfolio.position import Position
 
 
-class PositionHandler(object):
+class PositionHandler:
     """
     A class that keeps track of, and updates, the current
     list of Position instances stored in a Portfolio entity.

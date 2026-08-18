@@ -1,7 +1,7 @@
 from collections import deque
 
 
-class AssetPriceBuffers(object):
+class AssetPriceBuffers:
     """
     Utility class to store double-ended queue ("deque")
     based price buffers for usage in lookback-based

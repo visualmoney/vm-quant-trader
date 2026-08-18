@@ -2,7 +2,7 @@ from qstrader import settings
 from qstrader.execution.order import Order
 
 
-class PortfolioConstructionModel(object):
+class PortfolioConstructionModel:
     """
     Encapsulates the process of generating a target weight vector
     for a universe of assets, based on input from an AlphaModel,
@@ -167,7 +167,7 @@ class PortfolioConstructionModel(object):
             The current time used to populate the Order instances.
         target_portfolio : `dict{str: dict}`
             Target asset quantities in integral units.
-        curent_portfolio : `dict{str: dict}`
+        current_portfolio : `dict{str: dict}`
             Current (broker) asset quantities in integral units.
 
         Returns

@@ -11,7 +11,7 @@ from qstrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 from qstrader import settings
 
 
-class ExchangeMock(object):
+class ExchangeMock:
     def get_latest_asset_bid_ask(self, asset):
         return (np.nan, np.nan)
 
@@ -19,7 +19,7 @@ class ExchangeMock(object):
         return True
 
 
-class ExchangeMockException(object):
+class ExchangeMockException:
     def get_latest_asset_bid_ask(self, asset):
         raise ValueError("No price available!")
 
@@ -27,12 +27,12 @@ class ExchangeMockException(object):
         return True
 
 
-class ExchangeMockPrice(object):
+class ExchangeMockPrice:
     def is_open_at_datetime(self, dt):
         return True
 
 
-class DataHandlerMock(object):
+class DataHandlerMock:
     def get_asset_latest_bid_ask_price(self, dt, asset):
         return (np.nan, np.nan)
 
@@ -40,7 +40,7 @@ class DataHandlerMock(object):
         return np.nan
 
 
-class DataHandlerMockPrice(object):
+class DataHandlerMockPrice:
     def get_asset_latest_bid_ask_price(self, dt, asset):
         return (53.45, 53.47)
 
@@ -48,7 +48,7 @@ class DataHandlerMockPrice(object):
         return (53.47 - 53.45) / 2.0
 
 
-class OrderMock(object):
+class OrderMock:
     def __init__(self, asset, quantity, order_id=None):
         self.asset = asset
         self.quantity = quantity
@@ -56,7 +56,7 @@ class OrderMock(object):
         self.direction = np.copysign(1, self.quantity)
 
 
-class AssetMock(object):
+class AssetMock:
     def __init__(self, name, symbol):
         self.name = name
         self.symbol = symbol

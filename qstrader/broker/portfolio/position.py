@@ -3,7 +3,7 @@ from math import floor
 import numpy as np
 
 
-class Position(object):
+class Position:
     """
     Handles the accounting of entering a new position in an
     Asset along with subsequent modifications via additional

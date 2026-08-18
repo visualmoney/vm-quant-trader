@@ -1,12 +1,12 @@
 from qstrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 
 
-class AssetMock(object):
+class AssetMock:
     def __init__(self):
         pass
 
 
-class BrokerMock(object):
+class BrokerMock:
     def __init__(self):
         pass
 

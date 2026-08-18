@@ -1,4 +1,3 @@
-#!local/bin/python3
 # file: examples/download_data.py
 """
 Download daily OHLCV bar data from Yahoo! Finance into QSTrader-compatible
