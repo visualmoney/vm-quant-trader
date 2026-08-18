@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import pandas as pd
@@ -174,3 +175,56 @@ def test_a_backtest_starting_before_the_data_fails_loudly(memory_source):
         backtest.run(results=False)
 
     assert 'Not-a-Number' in str(excinfo.value)
+
+
+def test_a_gap_in_the_bars_is_valued_at_the_last_known_price():
+    """
+    Checks that the engine values a position through a day with no bar at the
+    most recent price before it, rather than at the next one after it.
+
+    This is the only test that drives the padding policy through the engine.
+    The other integration tests cannot: the simulation engine emits events at
+    14:30 and 21:00 and the bar conversion writes rows at exactly those
+    timestamps, so every query they make is an exact index match and the
+    policy is never reached. Switching the lookup to 'backfill' - which makes
+    every price query in the engine look into the future - leaves all four
+    end-to-end tests passing.
+
+    The bars here deliberately jump from 120 to 500 across the gap, so
+    padding backwards and filling forwards cannot be confused.
+    """
+    bars = pd.DataFrame(
+        {
+            'Open': [100.0, 110.0, 500.0],
+            'Close': [110.0, 120.0, 510.0],
+        },
+        # 2019-01-04 is a Friday, and is missing
+        index=pd.to_datetime(['2019-01-02', '2019-01-03', '2019-01-07'])
+    )
+    source = InMemoryDailyBarDataSource({'EQ:ABC': bars}, adjust_prices=False)
+
+    universe = StaticUniverse(['EQ:ABC'])
+    backtest = BacktestTradingSession(
+        pd.Timestamp('2019-01-02 14:30:00', tz=pytz.UTC),
+        pd.Timestamp('2019-01-07 23:59:00', tz=pytz.UTC),
+        universe,
+        FixedSignalsAlphaModel({'EQ:ABC': 1.0}),
+        portfolio_id='000001',
+        rebalance='buy_and_hold',
+        long_only=True,
+        cash_buffer_percentage=0.01,
+        data_handler=BacktestDataHandler(universe, data_sources=[source])
+    )
+    backtest.run(results=False)
+
+    equity = backtest.get_equity_curve()['Equity']
+
+    # 990,000 of the initial 1,000,000 is invested at the opening price of
+    # 100.0, giving 9,900 units and 10,000 of cash
+    assert equity.loc[datetime.date(2019, 1, 3)] == pytest.approx(10000.0 + 9900 * 120.0)
+
+    # The gap day pads back to the previous close of 120.0. Filling forwards
+    # from the next bar would value it at 500.0, an equity of 4,960,000
+    assert equity.loc[datetime.date(2019, 1, 4)] == pytest.approx(10000.0 + 9900 * 120.0)
+
+    assert equity.loc[datetime.date(2019, 1, 7)] == pytest.approx(10000.0 + 9900 * 510.0)
