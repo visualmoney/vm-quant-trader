@@ -59,6 +59,12 @@ class BacktestTradingSession(TradingSession):
         long/short leveraged portfolios. Defaults to long/short leveraged.
     fee_model : `FeeModel` class instance, optional
         The optional FeeModel derived subclass to use for transaction cost estimates.
+    optimiser : `PortfolioOptimiser`, optional
+        The optional optimiser used to generate target weights. Defaults to a
+        FixedWeightPortfolioOptimiser.
+    execution_algo : `ExecutionAlgorithm`, optional
+        The optional execution strategy applied to the rebalance orders.
+        Defaults to a MarketOrderExecutionAlgorithm.
     burn_in_dt : `pd.Timestamp`, optional
         The optional date provided to begin tracking strategy statistics,
         which is used for strategies requiring a period of data 'burn in'
@@ -81,6 +87,8 @@ class BacktestTradingSession(TradingSession):
         fee_model=ZeroFeeModel(),
         burn_in_dt=None,
         data_handler=None,
+        optimiser=None,
+        execution_algo=None,
         **kwargs
     ):
         self.start_dt = start_dt
@@ -97,6 +105,8 @@ class BacktestTradingSession(TradingSession):
         self.long_only = long_only
         self.fee_model = fee_model
         self.burn_in_dt = burn_in_dt
+        self.optimiser = optimiser
+        self.execution_algo = execution_algo
 
         self.exchange = self._create_exchange()
         self.data_handler = self._create_data_handler(data_handler)
@@ -263,9 +273,6 @@ class BacktestTradingSession(TradingSession):
         Creates the quantitative trading system with the provided
         alpha model.
 
-        TODO: All portfolio construction/optimisation is hardcoded for
-        sensible defaults.
-
         Returns
         -------
         `QuantTradingSystem`
@@ -288,6 +295,8 @@ class BacktestTradingSession(TradingSession):
                 self.risk_model,
                 long_only=self.long_only,
                 cash_buffer_percentage=cash_buffer_percentage,
+                optimiser=self.optimiser,
+                execution_algo=self.execution_algo,
                 submit_orders=True
             )
         else:
@@ -307,6 +316,8 @@ class BacktestTradingSession(TradingSession):
                 self.risk_model,
                 long_only=self.long_only,
                 gross_leverage=gross_leverage,
+                optimiser=self.optimiser,
+                execution_algo=self.execution_algo,
                 submit_orders=True
             )
 
