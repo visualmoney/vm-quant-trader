@@ -6,6 +6,7 @@ import pytest
 
 from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
 from qstrader.asset.universe.static import StaticUniverse
+from qstrader.broker.fee_model.percent_fee_model import PercentFeeModel
 from qstrader.trading.backtest import BacktestTradingSession
 
 from qstrader import settings
@@ -69,6 +70,77 @@ def test_backtest_sixty_forty(etf_filepath):
 
     # Necessary as test fixtures differ between
     # Pandas 1.1.5 and 1.2.0 very slightly
+    for symbol in expected_dict.keys():
+        for metric in expected_dict[symbol].keys():
+            assert portfolio_dict[symbol][metric] == pytest.approx(expected_dict[symbol][metric])
+
+
+def test_backtest_sixty_forty_with_fees(etf_filepath):
+    """
+    Ensures that transaction costs reach the portfolio, by running the same
+    weekly rebalanced 60/40 session as above with a percentage fee model.
+
+    Every other end-to-end test leaves the default ZeroFeeModel in place, so
+    the cost path was never exercised end to end: mutating the commission
+    calculation by a factor of one hundred left them all passing.
+    """
+    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+
+    assets = ['EQ:ABC', 'EQ:DEF']
+    universe = StaticUniverse(assets)
+    alpha_model = FixedSignalsAlphaModel({'EQ:ABC': 0.6, 'EQ:DEF': 0.4})
+
+    start_dt = pd.Timestamp('2019-01-01 00:00:00', tz=pytz.UTC)
+    end_dt = pd.Timestamp('2019-01-31 23:59:00', tz=pytz.UTC)
+
+    def run(**kwargs):
+        backtest = BacktestTradingSession(
+            start_dt,
+            end_dt,
+            universe,
+            alpha_model,
+            portfolio_id='000001',
+            rebalance='weekly',
+            rebalance_weekday='WED',
+            long_only=True,
+            cash_buffer_percentage=0.05,
+            **kwargs
+        )
+        backtest.run(results=False)
+        return backtest.broker.portfolios['000001']
+
+    # 0.1% commission and 0.5% tax, so 0.6% of each consideration
+    free = run()
+    charged = run(fee_model=PercentFeeModel(commission_pct=0.001, tax_pct=0.005))
+
+    # Charging for the trades must leave the account worse off
+    assert charged.total_equity < free.total_equity
+
+    # Every position carries the commission it was actually charged, and the
+    # sale of EQ:DEF is charged on the way out as well as on the way in
+    positions = charged.pos_handler.positions
+    assert positions['EQ:ABC'].commission == pytest.approx(3535.536)
+    assert positions['EQ:ABC'].sell_commission == pytest.approx(0.0)
+    assert positions['EQ:DEF'].commission == pytest.approx(2398.878)
+    assert positions['EQ:DEF'].sell_commission == pytest.approx(132.810)
+
+    portfolio_dict = charged.portfolio_to_dict()
+    expected_dict = {
+        'EQ:ABC': {
+            'unrealised_pnl': -34474.178555674844,
+            'realised_pnl': 0.0,
+            'total_pnl': -34474.178555674844,
+            'market_value': 558316.0407628036,
+            'quantity': 4646
+        },
+        'EQ:DEF': {
+            'unrealised_pnl': 15810.013381434626,
+            'realised_pnl': 348.65854781338334,
+            'total_pnl': 16158.67192924801,
+            'market_value': 374100.6377535782,
+            'quantity': 1423.0
+        }
+    }
     for symbol in expected_dict.keys():
         for metric in expected_dict[symbol].keys():
             assert portfolio_dict[symbol][metric] == pytest.approx(expected_dict[symbol][metric])
