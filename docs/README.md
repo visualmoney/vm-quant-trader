@@ -23,8 +23,9 @@ QSTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 
 | 보고서 | 상태 | 요약 |
 | --- | --- | --- |
-| [20260818-01-codebase-comprehension-strategy.md](dev/reports/20260818-01-codebase-comprehension-strategy.md) | 유효 · 일부 해소 | 아키텍처 지도, 4단계 학습 경로, **실습 과제 10종(T1~T10)**, 확장 지점 15개, 커버리지 공백 및 기술부채 지도 (기준: `b94c6c0` / v0.3.10). §8-1은 v0.3.12에서, §8-7의 일부는 v0.3.13에서 해소. T5~T8 수행 완료 |
+| [20260818-01-codebase-comprehension-strategy.md](dev/reports/20260818-01-codebase-comprehension-strategy.md) | 유효 · 일부 해소 | 아키텍처 지도, 4단계 학습 경로, **실습 과제 10종(T1~T10)**, 확장 지점 15개, 커버리지 공백 및 기술부채 지도 (기준: `b94c6c0` / v0.3.10). §8-1은 v0.3.12에서, §8-7의 일부는 v0.3.13에서 해소. T5~T10 수행 완료. §8-5·§8-7의 심각도 판단은 보고서 06의 실측으로 뒤집혔다 |
 | [20260818-02-transaction-cost-consolidation.md](dev/reports/20260818-02-transaction-cost-consolidation.md) | **v0.3.13 구현 완료** | `Transaction.cost_with_commission`를 `Portfolio`가 사용하도록 통합하는 구현 준비서 — 동치성 분석, 변경 설계, 테스트 계획 |
 | [20260818-03-performance-module-defects.md](dev/reports/20260818-03-performance-module-defects.md) | **v0.3.13 수정 완료** | `statistics/performance.py`의 **결함 2건** — 발생하지 않는 `ValueError`, 최대 낙폭 과소 보고(실측 최대 5.44%p) |
 | [20260818-04-execution-and-cost-layer-limits.md](dev/reports/20260818-04-execution-and-cost-layer-limits.md) | **부분 수정** | T7 실험 — 사이저의 **수수료 과대 추정**(성과 손실의 22.2%)과 실행 알고리즘 주입 지점 부재는 v0.3.13에서 수정. **시간 분할 실행 불가(L1)는 구조적 한계로 남음** |
 | [20260818-05-data-source-contract.md](dev/reports/20260818-05-data-source-contract.md) | **v0.3.13 수정 완료** | T8 실험 — `DataSource` ABC 신설과 인메모리 구현체 추가, 역추출한 계약, `adjusted` 인자 불일치 해소, **시작일 이전 조회가 미래 가격을 반환하던 룩어헤드 결함** |
+| [20260818-06-safety-net-and-profiling.md](dev/reports/20260818-06-safety-net-and-profiling.md) | 유효 | T9·T10 — 변형 주입으로 측정한 e2e 안전망의 검출 범위(유효 12건 중 5건), **e2e가 전면적 룩어헤드를 통과시키는 이유**, 그리고 §8-5·§8-7 추정을 뒤집은 프로파일링 실측 |
