@@ -7,7 +7,7 @@ import pytz
 from qstrader import settings
 
 
-class CSVDailyBarDataSource(object):
+class CSVDailyBarDataSource:
     """
     Encapsulates loading, preparation and querying of CSV files of
     daily 'bar' OHLCV data. The CSV files are converted into a intraday

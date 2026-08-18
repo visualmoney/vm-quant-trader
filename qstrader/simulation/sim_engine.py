@@ -1,7 +1,7 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 
-class SimulationEngine(object):
+class SimulationEngine(ABC):
     """
     Interface to a tradinh event simulation engine.
 
@@ -19,10 +19,17 @@ class SimulationEngine(object):
     orders.
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def __iter__(self):
+        """
+        Generate the SimulationEvent entities occurring between the
+        starting and ending timestamps of the engine.
+
+        Yields
+        ------
+        `SimulationEvent`
+            The next simulation event in the sequence.
+        """
         raise NotImplementedError(
             "Should implement __iter__()"
         )

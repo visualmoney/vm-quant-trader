@@ -18,7 +18,7 @@ from qstrader.portcon.order_sizer.long_short import (
 )
 
 
-class QuantTradingSystem(object):
+class QuantTradingSystem:
     """
     Encapsulates all components associated with the quantitative
     trading system. This includes the alpha model(s), the risk

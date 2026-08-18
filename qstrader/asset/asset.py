@@ -1,9 +1,7 @@
-from abc import ABCMeta
+from abc import ABC
 
 
-class Asset(object):
+class Asset(ABC):
     """
     Generic asset class that stores meta data about a trading asset.
     """
-
-    __metaclass__ = ABCMeta

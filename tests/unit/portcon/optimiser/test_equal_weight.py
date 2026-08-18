@@ -7,7 +7,7 @@ from qstrader.portcon.optimiser.equal_weight import (
 )
 
 
-class DataHandlerMock(object):
+class DataHandlerMock:
     pass
 
 

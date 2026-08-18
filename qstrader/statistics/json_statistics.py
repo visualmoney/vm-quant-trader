@@ -7,7 +7,7 @@ from qstrader import settings
 import qstrader.statistics.performance as perf
 
 
-class JSONStatistics(object):
+class JSONStatistics:
     """
     Standalone class to output basic backtesting statistics
     into a JSON file format.

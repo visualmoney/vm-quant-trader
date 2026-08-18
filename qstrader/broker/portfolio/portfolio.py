@@ -9,7 +9,7 @@ from qstrader.broker.portfolio.portfolio_event import PortfolioEvent
 from qstrader.broker.portfolio.position_handler import PositionHandler
 
 
-class Portfolio(object):
+class Portfolio:
     """
     Represents a portfolio of assets. It contains a cash
     account with the ability to subscribe and withdraw funds.

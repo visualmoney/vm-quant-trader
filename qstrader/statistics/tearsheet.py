@@ -33,6 +33,19 @@ class TearsheetStatistics(Statistics):
     def get_results(self, equity_df):
         """
         Return a dict with all important results & stats.
+
+        Parameters
+        ----------
+        equity_df : `pd.DataFrame`
+            The datetime-indexed equity curve, carrying an 'Equity'
+            column, to calculate the statistics from.
+
+        Returns
+        -------
+        `dict`
+            The Sharpe ratio, drawdown series, maximum drawdown and its
+            duration, along with the equity, returns and cumulative
+            returns series.
         """
         # Returns
         equity_df["returns"] = equity_df["Equity"].pct_change().fillna(0.0)
@@ -263,12 +276,38 @@ class TearsheetStatistics(Statistics):
         ax.axis([0, 10, 0, 10])
         return ax
 
+    def update(self, dt):
+        """
+        Satisfies the Statistics interface.
+
+        A tearsheet is derived entirely from the completed equity curves
+        handed to the constructor, so there is no per-event state to
+        accumulate as a backtest advances and this is a no-op.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The timestamp to update the statistics to. Unused.
+        """
+        pass
+
+    def save(self, filename):
+        """
+        Save the tearsheet to 'filename' without opening a window.
+
+        Parameters
+        ----------
+        filename : `str`
+            The path to save the tearsheet image to.
+        """
+        self.plot_results(filename=filename, show=False)
+
     def plot_results(self, filename=None, show=True):
         """
         Plot the Tearsheet
 
         Parameters
-        ==========
+        ----------
         filename : `str`
             Option to save the tearsheet output when a filename is specified.
         show : `Boolean`, optional

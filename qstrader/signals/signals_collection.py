@@ -1,4 +1,4 @@
-class SignalsCollection(object):
+class SignalsCollection:
     """
     Provides a mechanism for aggregating all signals
     used by AlphaModels or RiskModels.

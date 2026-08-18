@@ -1,4 +1,4 @@
-class ExecutionHandler(object):
+class ExecutionHandler:
     """
     Handles the execution of a list of Orders output by the
     PortfolioConstructionModel via the Broker.

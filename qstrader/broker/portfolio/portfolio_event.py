@@ -1,4 +1,4 @@
-class PortfolioEvent(object):
+class PortfolioEvent:
     """
     Stores an individual instance of a portfolio event used to create
     an event trail to track all changes to a portfolio through time.

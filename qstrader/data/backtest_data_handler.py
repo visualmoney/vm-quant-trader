@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class BacktestDataHandler(object):
+class BacktestDataHandler:
     """
     """
 

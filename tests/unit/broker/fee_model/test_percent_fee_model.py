@@ -3,12 +3,12 @@ import pytest
 from qstrader.broker.fee_model.percent_fee_model import PercentFeeModel
 
 
-class AssetMock(object):
+class AssetMock:
     def __init__(self):
         pass
 
 
-class BrokerMock(object):
+class BrokerMock:
     def __init__(self):
         pass
 

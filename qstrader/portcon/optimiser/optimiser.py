@@ -1,7 +1,7 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 
-class PortfolioOptimiser(object):
+class PortfolioOptimiser(ABC):
     """
     Abstract interface for a PortfolioOptimiser callable.
 
@@ -17,10 +17,25 @@ class PortfolioOptimiser(object):
     Asset and with a scalar value as the weight.
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
-    def __call__(self, dt):
+    def __call__(self, dt, initial_weights):
+        """
+        Produce the dictionary of target weight values for each of the
+        Asset instances provided.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The time 'now' used to obtain appropriate data for the
+            target weights.
+        initial_weights : `dict{str: float}`
+            The initial weights prior to optimisation.
+
+        Returns
+        -------
+        `dict{str: float}`
+            The Asset symbol keyed scalar-valued target weights.
+        """
         raise NotImplementedError(
             "Should implement __call__()"
         )

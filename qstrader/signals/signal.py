@@ -1,9 +1,9 @@
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 from qstrader.signals.buffer import AssetPriceBuffers
 
 
-class Signal(object):
+class Signal(ABC):
     """
     Abstract class to provide historical price range-based
     rolling signals utilising deque-based 'buffers'.
@@ -17,8 +17,6 @@ class Signal(object):
     lookbacks : `list[int]`
         The number of lookback periods to store prices for.
     """
-
-    __metaclass__ = ABCMeta
 
     def __init__(self, start_dt, universe, lookbacks):
         self.start_dt = start_dt
@@ -67,12 +65,28 @@ class Signal(object):
         universe_assets = self.universe.get_assets(dt)
 
         # TODO: Assume universe never decreases for now
-        extra_assets = list(set(universe_assets) - set((self.assets)))
+        extra_assets = list(set(universe_assets) - set(self.assets))
         for extra_asset in extra_assets:
             self.assets.append(extra_asset)
 
     @abstractmethod
     def __call__(self, asset, lookback):
+        """
+        Calculate the signal for the asset over the given lookback
+        period, using the prices stored in its buffer.
+
+        Parameters
+        ----------
+        asset : `str`
+            The asset symbol name.
+        lookback : `int`
+            The lookback period.
+
+        Returns
+        -------
+        `float`
+            The signal value for the period.
+        """
         raise NotImplementedError(
             "Should implement __call__()"
         )
