@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "qstrader"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
     "matplotlib>=3.8",
     "numpy>=2.0.0",
@@ -21,6 +21,13 @@ maintainers = [
 description = "QSTrader backtesting simulation engine"
 readme = "README.md"
 requires-python = ">= 3.10"
+# Dual licensed: a user may choose either license. The MIT terms are retained
+# because this project derives from the MIT-licensed upstream QSTrader, whose
+# notice cannot be removed; Apache-2.0 is offered alongside it for its explicit
+# patent grant. Declared as an SPDX expression (PEP 639) rather than classifiers,
+# which cannot express a choice between two licenses.
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
 keywords = ["backtesting", "systematic trading", "algorithmic trading"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -29,7 +36,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 5 - Production/Stable",
 ]
