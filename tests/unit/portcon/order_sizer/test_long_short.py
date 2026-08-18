@@ -177,6 +177,8 @@ def test_call(total_equity, gross_leverage, weights, asset_prices, expected):
     broker = Mock()
     broker.get_portfolio_total_equity.return_value = total_equity
     broker.fee_model.calc_total_cost.return_value = 0.0
+    # An empty portfolio: every target is reached from a standing start
+    broker.get_portfolio_as_dict.return_value = {}
 
     data_handler = Mock()
     data_handler.get_asset_latest_ask_price.side_effect = lambda self, x: asset_prices[x]
@@ -187,3 +189,32 @@ def test_call(total_equity, gross_leverage, weights, asset_prices, expected):
 
     result = order_sizer(dt, weights)
     assert result == expected
+
+
+def test_fees_are_estimated_on_the_trade_not_the_whole_position():
+    """
+    Checks that the fee estimate is taken on the trade rather than the whole
+    target position, including when the existing holding is a short that has
+    to be reversed.
+    """
+    dt = pd.Timestamp('2019-01-01 15:00:00', tz=pytz.utc)
+
+    broker = Mock()
+    broker.get_portfolio_total_equity.return_value = 1000000.0
+    broker.fee_model.calc_total_cost.return_value = 0.0
+    # Short 100 units at 1000.0 against a long target of 1,000,000, so the
+    # trade is the full 1,100,000 needed to reverse the position
+    broker.get_portfolio_as_dict.return_value = {'EQ:ABC': {'quantity': -100}}
+
+    data_handler = Mock()
+    data_handler.get_asset_latest_ask_price.side_effect = lambda self, x: 1000.0
+
+    order_sizer = LongShortLeveragedOrderSizer(
+        broker, "1234", data_handler, 1.0
+    )
+    order_sizer(dt, {'EQ:ABC': 1.0})
+
+    asset, quantity, consideration = broker.fee_model.calc_total_cost.call_args[0]
+    assert asset == 'EQ:ABC'
+    assert consideration == pytest.approx(1100000.0)
+    assert quantity == 1100
