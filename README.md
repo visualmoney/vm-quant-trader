@@ -5,7 +5,7 @@
 | Test Status   | [![CI](https://img.shields.io/github/actions/workflow/status/visualmoney/vm-quant-trader/ci.yml?branch=master&style=flat-square&label=CI)](https://github.com/visualmoney/vm-quant-trader/actions/workflows/ci.yml) [![Coverage Status](https://img.shields.io/coverallsCoverage/github/visualmoney/vm-quant-trader?branch=master&style=flat-square&label=Coverage)](https://coveralls.io/github/visualmoney/vm-quant-trader?branch=master) |
 | Version Info  | [![PyPI](https://img.shields.io/pypi/v/qstrader?style=flat-square&label=PyPI&color=blue)](https://pypi.org/project/qstrader) [![PyPI Downloads](https://img.shields.io/pypi/dm/qstrader?style=flat-square&label=PyPI%20Downloads)](https://pypi.org/project/qstrader) |
 | Compatibility | [![Python Version](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue?style=flat-square)](https://github.com/visualmoney/vm-quant-trader/actions/workflows/ci.yml) |
-| License       | ![GitHub](https://img.shields.io/github/license/mhallsmoore/qstrader?style=flat-square&label=License) |
+| License       | [![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-blue?style=flat-square)](#license-terms) |
 
 QSTrader is a free Python-based open-source modular schedule-driven backtesting framework for long-short equities and ETF based systematic trading strategies.
 
@@ -13,7 +13,7 @@ QSTrader can be best described as a loosely-coupled collection of modules for ca
 
 The default modules provide useful functionality for certain types of systematic trading strategies and can be utilised without modification. However the intent of QSTrader is for the users to extend, inherit or fully replace each module in order to provide custom functionality for their own use case.
 
-The software is currently under active development and is provided under a permissive "MIT" license.
+The software is currently under active development and is dual licensed under the MIT license and the Apache License, Version 2.0, at your option.
 
 ## Previous Version and Advanced Algorithmic Trading
 
@@ -278,19 +278,29 @@ The CSV data is read from `QSTRADER_CSV_DATA_DIR` exactly as for the examples, a
 
 * **Performance Statistics** - QSTrader provides typical 'tearsheet' performance assessment of strategies. It also supports statistics export via JSON to allow external software to consume metrics from backtests.
 
-* **Free Open-Source Software** - QSTrader has been released under a permissive open-source MIT License. This allows full usage in both research and commercial applications, without restriction, but with no warranty of any kind whatsoever (see **License** below). QSTrader is completely free and costs nothing to download or use.
+* **Free Open-Source Software** - QSTrader has been released under two permissive open-source licenses, MIT and Apache 2.0, either of which you may choose. Both allow full usage in both research and commercial applications, without restriction, but with no warranty of any kind whatsoever (see **License Terms** below). QSTrader is completely free and costs nothing to download or use.
 
 * **Software Development** - QSTrader is written in the Python programming language for straightforward cross-platform support. QSTrader contains a suite of unit and integration tests for the majority of its modules. Tests are continually added for new features.
 
 ## License Terms
 
+QSTrader is dual licensed under either of
+
+* the MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>), or
+* the Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+
+at your option. Its SPDX identifier is `MIT OR Apache-2.0`.
+
+You need comply with only one of them. Apache 2.0 is offered for its explicit patent
+grant and its contribution terms; MIT is retained because this project derives from the
+MIT-licensed upstream [QSTrader](https://github.com/mhallsmoore/qstrader), whose
+copyright notice and permission notice must be preserved in every copy:
+
 Copyright (c) 2015-2024 QuantStart.com, QuarkGluon Ltd
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+Unless you explicitly state otherwise, any contribution intentionally submitted for
+inclusion in QSTrader by you, as defined in the Apache 2.0 license, shall be dual
+licensed as above, without any additional terms or conditions.
 
 ## Trading Disclaimer
 

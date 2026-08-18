@@ -1,3 +1,12 @@
+# 0.3.11
+
+* Dual licenses the project under 'MIT OR Apache-2.0', where it was previously MIT alone. Users may comply with either. Apache-2.0 is offered for its explicit patent grant and its contribution terms, which MIT does not address at all.
+* Splits 'LICENSE' into 'LICENSE-MIT' and 'LICENSE-APACHE'. The MIT text keeps the upstream 'Copyright (c) 2015-2024 QuantStart.com, QuarkGluon Ltd' notice unchanged: this project derives from the MIT-licensed upstream QSTrader, and MIT permits sublicensing under other terms but never permits removing that notice. Adding Apache-2.0 alongside it is therefore the only form a relicense can take here.
+* Declares the licence in pyproject.toml as the PEP 639 SPDX expression 'license = "MIT OR Apache-2.0"' with 'license-files', and drops the 'License :: OSI Approved :: MIT License' classifier. Classifiers cannot express a choice between two licences, and PEP 639 forbids combining a licence expression with licence classifiers.
+* Adds both licence files to MANIFEST.in, which still named the removed 'LICENSE'. Without this the source distribution would ship no licence text at all.
+* Replaces the README licence badge, which read the licence from 'mhallsmoore/qstrader' rather than this repository, and so reported the upstream project's terms. This is the same defect 0.3.8 corrected for the Python version badge.
+* Rewrites the README 'License Terms' section, which reproduced the MIT text inline, and corrects the two other places that described the project as MIT licensed.
+
 # 0.3.10
 
 * Tags the code fences in README.md. Eighteen of the nineteen blocks were untagged and so rendered without syntax highlighting, while examples/README.md and examples/README.ko.md have tagged theirs since they were written. Seventeen are shell commands and take 'bash'; the block showing the contents of a '.env' file takes 'ini', since it is file content rather than commands; the Python snippet was already tagged. No text inside any block changed.
