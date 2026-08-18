@@ -1,3 +1,10 @@
+# 0.3.16
+
+* Tests rebalance membership against a frozenset rather than scanning the schedule list. _is_rebalance_event runs once per simulation event, and comparing Pandas Timestamps is expensive enough that 8,482 events against a 196 entry schedule measured at 7.5% of runtime in isolation. End to end the saving is larger: five runs of the sixteen year 60/40 backtest give a median of 3.464 seconds before and 2.688 after, a 22% reduction, with the final equity identical to the cent. The ordered list stays as the public 'rebalance_schedule' attribute; only the membership test moves.
+* Adds the only test that drives the price padding policy through the engine. Task T9 found that switching the lookup from 'pad' to 'backfill', which makes every price query look into the future, left all four end-to-end tests passing, because the simulation engine emits events at exactly the timestamps the bar conversion writes and so never reaches the policy at all. The new test gives the engine bars with a day missing and prices that jump from 120 to 500 across the gap, so padding backwards and filling forwards cannot be confused.
+* Adds an end-to-end backtest that charges fees. Every existing one left the default ZeroFeeModel in place, so mutating the PercentFeeModel commission by a factor of one hundred left them all passing. The new test runs the same 60/40 session with and without a 0.1% commission and 0.5% tax, and checks that charging leaves the account worse off, that each position carries the commission it was charged including the sale side, and the resulting holdings.
+* Records the outcome in report 06 and corrects one heading in it. The two remaining recommendations, tests for tearsheet.py and json_statistics.py and a searchsorted price lookup, are not addressed.
+
 # 0.3.15
 
 * Adds a report measuring what the end-to-end fixture tests actually catch, and profiling the engine. Both tasks existed to check estimates made in report 01, and both estimates turned out to be wrong.
