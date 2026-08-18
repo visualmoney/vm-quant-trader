@@ -134,6 +134,8 @@ def test_call(total_equity, cash_buffer_perc, weights, asset_prices, expected):
     broker = Mock()
     broker.get_portfolio_total_equity.return_value = total_equity
     broker.fee_model.calc_total_cost.return_value = 0.0
+    # An empty portfolio: every target is reached from a standing start
+    broker.get_portfolio_as_dict.return_value = {}
 
     data_handler = Mock()
     data_handler.get_asset_latest_ask_price.side_effect = lambda self, x: asset_prices[x]
@@ -144,3 +146,36 @@ def test_call(total_equity, cash_buffer_perc, weights, asset_prices, expected):
 
     result = order_sizer(dt, weights)
     assert result == expected
+
+
+def test_fees_are_estimated_on_the_trade_not_the_whole_position():
+    """
+    Checks that the fee estimate passed to the FeeModel is the size of the
+    trade required to reach the target, not the value of the whole target
+    position.
+
+    Until 0.3.13 the sizer priced the entire position at every rebalance as
+    though it were being bought from scratch. Since the estimate is deducted
+    from the target before the quantity is truncated, that left the portfolio
+    permanently under-invested by roughly the fee rate.
+    """
+    dt = pd.Timestamp('2019-01-01 15:00:00', tz=pytz.utc)
+
+    broker = Mock()
+    broker.get_portfolio_total_equity.return_value = 1000000.0
+    broker.fee_model.calc_total_cost.return_value = 0.0
+    # 990 units at 1000.0 are already held, so only 10,000 needs trading
+    broker.get_portfolio_as_dict.return_value = {'EQ:ABC': {'quantity': 990}}
+
+    data_handler = Mock()
+    data_handler.get_asset_latest_ask_price.side_effect = lambda self, x: 1000.0
+
+    order_sizer = DollarWeightedCashBufferedOrderSizer(
+        broker, "1234", data_handler, 0.0
+    )
+    order_sizer(dt, {'EQ:ABC': 1.0})
+
+    asset, quantity, consideration = broker.fee_model.calc_total_cost.call_args[0]
+    assert asset == 'EQ:ABC'
+    assert consideration == pytest.approx(10000.0)
+    assert quantity == 10

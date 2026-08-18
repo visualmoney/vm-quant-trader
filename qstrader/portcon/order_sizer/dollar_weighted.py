@@ -112,6 +112,51 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
             for asset, weight in weights.items()
         }
 
+    def _obtain_current_portfolio(self):
+        """
+        Query the broker for the current portfolio holdings.
+
+        Returns
+        -------
+        `dict{str: dict}`
+            The current broker portfolio holdings, keyed by asset symbol.
+        """
+        return self.broker.get_portfolio_as_dict(self.broker_portfolio_id)
+
+    def _estimate_trade_costs(
+        self, asset, target_dollars, current_quantity, asset_price
+    ):
+        """
+        Estimate the broker costs of moving an asset to its target position.
+
+        The estimate is taken on the size of the trade, not on the whole
+        target position. A rebalance usually trades only the increment, so
+        pricing the entire position reserves cash for a trade that will not
+        happen and leaves the portfolio permanently under-invested by
+        approximately the fee rate.
+
+        Parameters
+        ----------
+        asset : `str`
+            The asset symbol string.
+        target_dollars : `float`
+            The desired dollar value of the position.
+        current_quantity : `int`
+            The quantity of the asset currently held.
+        asset_price : `float`
+            The current price of the asset.
+
+        Returns
+        -------
+        `float`
+            The estimated commission and tax for the trade.
+        """
+        trade_dollars = abs(target_dollars - current_quantity * asset_price)
+        trade_quantity = int(np.floor(trade_dollars / asset_price))
+        return self.broker.fee_model.calc_total_cost(
+            asset, trade_quantity, trade_dollars, broker=self.broker
+        )
+
     def __call__(self, dt, weights):
         """
         Creates a dollar-weighted cash-buffered target portfolio from the
@@ -144,18 +189,12 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
         # Ensure weight vector sums to unity
         normalised_weights = self._normalise_weights(weights)
 
+        current_portfolio = self._obtain_current_portfolio()
+
         target_portfolio = {}
         for asset, weight in sorted(normalised_weights.items()):
             pre_cost_dollar_weight = cash_buffered_total_equity * weight
 
-            # Estimate broker fees for this asset
-            est_quantity = 0  # TODO: Needs to be added for IB
-            est_costs = self.broker.fee_model.calc_total_cost(
-                asset, est_quantity, pre_cost_dollar_weight, broker=self.broker
-            )
-
-            # Calculate integral target asset quantity assuming broker costs
-            after_cost_dollar_weight = pre_cost_dollar_weight - est_costs
             asset_price = self.data_handler.get_asset_latest_ask_price(
                 dt, asset
             )
@@ -167,6 +206,16 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
                     'than the first available price for a particular asset. Try '
                     'modifying the backtest start date and re-running.' % (asset, dt)
                 )
+
+            # Estimate broker fees on the trade required to reach the target
+            est_costs = self._estimate_trade_costs(
+                asset, pre_cost_dollar_weight,
+                current_portfolio.get(asset, {}).get('quantity', 0),
+                asset_price
+            )
+
+            # Calculate integral target asset quantity assuming broker costs
+            after_cost_dollar_weight = pre_cost_dollar_weight - est_costs
 
             # TODO: Long only for the time being.
             asset_quantity = int(
