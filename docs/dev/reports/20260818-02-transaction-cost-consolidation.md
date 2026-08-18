@@ -5,9 +5,11 @@
 | 문서 ID | `20260818-02-transaction-cost-consolidation` |
 | 작성일 | 2026-08-18 |
 | 관점 | Software Architect |
-| 상태 | **준비 완료 · 미구현** (본 문서는 설계와 검증 계획만 담는다. 코드는 변경하지 않았다) |
+| 상태 | **v0.3.13에서 구현 완료** (작성 시점에는 준비 단계였다) |
 | 조사 기준 | `master` @ `b94c6c0` + 미커밋 라이선스 변경분 |
 | 선행 문서 | [20260818-01-codebase-comprehension-strategy.md](20260818-01-codebase-comprehension-strategy.md) |
+
+> **후속 (2026-08-18, v0.3.13)**: §5의 Option A와 B가 모두 적용되었다. 아래 본문은 **수정 이전 시점의 기록**이며, 보고서는 스냅샷이므로 갱신하지 않는다. 현재 코드의 동작은 CHANGELOG와 테스트를 참조할 것.
 
 ---
 
