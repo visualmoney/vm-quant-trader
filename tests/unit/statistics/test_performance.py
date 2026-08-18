@@ -88,19 +88,20 @@ def test_aggregate_returns(convert_to, expected_index, expected_values):
     assert list(result.values) == pytest.approx(expected_values)
 
 
-def test_aggregate_returns_with_unknown_period_returns_none():
+def test_aggregate_returns_with_unknown_period_raises():
     """
-    Pins the current behaviour for an unrecognised 'convert_to' value.
+    Checks that an unrecognised 'convert_to' value is reported, and that the
+    message names the value that was actually supplied.
 
-    The final branch of aggregate_returns constructs a ValueError but never
-    raises it, so the function falls off the end and returns None instead of
-    reporting the bad argument. This test documents that rather than endorsing
-    it: if the missing 'raise' is ever added, this test should be changed to
-    assert the exception.
+    Until 0.3.13 the final branch constructed a ValueError without raising it,
+    so a typo returned None and surfaced much later, if at all.
     """
     returns = _returns_series(RETURNS)
 
-    assert aggregate_returns(returns, 'daily') is None
+    with pytest.raises(ValueError) as excinfo:
+        aggregate_returns(returns, 'daily')
+
+    assert 'daily' in str(excinfo.value)
 
 
 @pytest.mark.parametrize(
@@ -250,24 +251,37 @@ def test_create_drawdowns_on_a_monotonically_rising_curve():
     assert duration == 0
 
 
-def test_create_drawdowns_never_treats_the_opening_value_as_a_peak():
+def test_create_drawdowns_on_a_monotonically_falling_curve():
     """
-    Pins a defect: the high water mark array is initialised to zero and the
-    loop starts at index 1, so the first value of the curve can never become
-    a peak.
+    Checks a curve that only ever falls, where every point after the first
+    is in drawdown and the peak is the opening value.
 
-    Here the curve halves immediately and never recovers, yet the reported
-    maximum drawdown is 0.0 with a duration of 0. A correct implementation
-    would seed the high water mark with the opening value and report 50%.
+    Until 0.3.13 this reported 22.2% over 2 periods, measuring from the
+    second point rather than the first.
+    """
+    equity = _returns_series([1.0, 0.9, 0.8, 0.7])
 
-    This test documents the behaviour so that the loss of it is deliberate.
-    If the seeding is fixed, this test should be replaced by one asserting
-    the 50% figure.
+    drawdown, max_drawdown, duration = create_drawdowns(equity)
+
+    assert list(drawdown.values) == pytest.approx([0.0, 0.1, 0.2, 0.3])
+    assert max_drawdown == pytest.approx(0.3)
+    assert duration == 3
+
+
+def test_create_drawdowns_treats_the_opening_value_as_a_peak():
+    """
+    Checks that a curve which peaks at its very first point has its drawdown
+    measured from that peak.
+
+    Until 0.3.13 the high water mark array was initialised to zero and the
+    loop started at index 1, so the opening value could never become a peak.
+    This curve halves immediately and never recovers, and was reported as a
+    0.0 maximum drawdown lasting 0 periods.
     """
     equity = _returns_series([2.0, 1.0, 1.0])
 
     drawdown, max_drawdown, duration = create_drawdowns(equity)
 
-    assert list(drawdown.values) == pytest.approx([0.0, 0.0, 0.0])
-    assert max_drawdown == pytest.approx(0.0)
-    assert duration == 0
+    assert list(drawdown.values) == pytest.approx([0.0, 0.5, 0.5])
+    assert max_drawdown == pytest.approx(0.5)
+    assert duration == 2

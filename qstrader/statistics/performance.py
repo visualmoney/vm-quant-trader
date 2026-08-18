@@ -23,7 +23,10 @@ def aggregate_returns(returns, convert_to):
         return returns.groupby(
             [lambda x: x.year]).apply(cumulate_returns)
     else:
-        ValueError('convert_to must be weekly, monthly or yearly')
+        raise ValueError(
+            "'convert_to' must be 'weekly', 'monthly' or 'yearly', "
+            "not '%s'." % convert_to
+        )
 
 
 def create_cagr(equity, periods=252):
@@ -65,31 +68,31 @@ def create_sortino_ratio(returns, periods=252):
     return np.sqrt(periods) * (np.mean(returns)) / np.std(returns[returns < 0])
 
 
-def create_drawdowns(returns):
+def create_drawdowns(equity):
     """
     Calculate the largest peak-to-trough drawdown of the equity curve
-    as well as the duration of the drawdown. Requires that the
-    pnl_returns is a pandas Series.
+    as well as the duration of the drawdown.
 
     Parameters:
-    equity - A pandas Series representing period percentage returns.
+    equity - A pandas Series representing a cumulative return curve,
+             normalised to 1.0 at the start. Not period returns.
 
     Returns:
     drawdown, drawdown_max, duration
     """
-    # Calculate the cumulative returns curve
-    # and set up the High Water Mark
-    idx = returns.index
+    # Set up the High Water Mark, seeded with the opening value so that
+    # a curve which peaks at its first point is measured from that peak
+    idx = equity.index
     hwm = np.zeros(len(idx))
+    hwm[0] = equity.iloc[0]
 
     # Create the high water mark
     for t in range(1, len(idx)):
-        hwm[t] = max(hwm[t - 1], returns.iloc[t])
+        hwm[t] = max(hwm[t - 1], equity.iloc[t])
 
     # Calculate the drawdown and duration statistics
     perf = pd.DataFrame(index=idx)
-    perf["Drawdown"] = (hwm - returns) / hwm
-    perf.loc[perf.index[0], 'Drawdown'] = 0.0
+    perf["Drawdown"] = (hwm - equity) / hwm
     perf["DurationCheck"] = np.where(perf["Drawdown"] == 0, 0, 1)
     duration = max(
         sum(1 for i in g if i == 1)
