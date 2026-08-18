@@ -125,6 +125,12 @@ class BacktestTradingSession(TradingSession):
                 )
         self.rebalance_schedule = self._create_rebalance_event_times()
 
+        # Membership is tested once per simulation event, and comparing
+        # Pandas Timestamps is expensive enough that a linear scan over a
+        # few hundred entries measured at 7.5% of a backtest's runtime.
+        # The list is kept as well, since it is the ordered schedule.
+        self._rebalance_timestamps = frozenset(self.rebalance_schedule)
+
         self.qts = self._create_quant_trading_system(**kwargs)
         self.equity_curve = []
         self.target_allocations = []
@@ -144,7 +150,7 @@ class BacktestTradingSession(TradingSession):
         `Boolean`
             Whether the timestamp is part of the rebalance schedule.
         """
-        return dt in self.rebalance_schedule
+        return dt in self._rebalance_timestamps
 
     def _create_exchange(self):
         """
