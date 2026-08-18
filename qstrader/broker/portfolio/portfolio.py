@@ -213,8 +213,7 @@ class Portfolio:
             )
         self.current_dt = txn.dt
 
-        txn_share_cost = txn.price * txn.quantity
-        txn_total_cost = txn_share_cost + txn.commission
+        txn_total_cost = txn.cost_with_commission
 
         if txn_total_cost > self.cash:
             if settings.PRINT_EVENTS:
