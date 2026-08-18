@@ -204,6 +204,7 @@ Blank lines and `#` comments are ignored, an `export ` prefix is allowed, and qu
 | [`buy_and_hold.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/buy_and_hold.py) | Buy & hold a single gold ETF | `GLD` |
 | [`long_short.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/long_short.py) | Long/short leveraged treasury bond ETFs | `TLT IEI SPY` |
 | [`momentum_taa.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/momentum_taa.py) | US sector momentum, top 3 sectors | `XLB XLC XLE XLF XLI XLK XLP XLU XLV XLY SPY` |
+| [`sma_crossover.py`](https://github.com/mhallsmoore/qstrader/blob/master/examples/sma_crossover.py) | SPY/AGG 50/200 day moving average crossover, against a 60/40 benchmark | `SPY AGG` |
 
 Each example is described in detail — what it demonstrates, its parameters and what to look for in the tearsheet — in [`examples/README.md`](examples/README.md) ([한국어](examples/README.ko.md)), which orders them from the simplest to the most involved.
 

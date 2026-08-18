@@ -2,7 +2,7 @@
 
 *Read this in [한국어](README.ko.md).*
 
-Five example backtests, arranged as a progression. Each one is a self-contained script that builds a `BacktestTradingSession`, runs it and produces a tearsheet, and each adds exactly one new idea to the one before it — so read in order they double as a guided tour of the QSTrader API.
+Six example backtests, arranged as a progression. Each one is a self-contained script that builds a `BacktestTradingSession`, runs it and produces a tearsheet, and each adds exactly one new idea to the one before it — so read in order they double as a guided tour of the QSTrader API.
 
 For installation, data download and tearsheet options, see the [Running the Examples](../README.md#running-the-examples) section of the main README. This document covers what each example actually does.
 
@@ -16,6 +16,7 @@ For installation, data download and tearsheet options, see the [Running the Exam
    3. [`sixty_forty_fees.py`](#3-sixty_forty_feespy) — transaction costs
    4. [`long_short.py`](#4-long_shortpy) — shorting and leverage
    5. [`momentum_taa.py`](#5-momentum_taapy) — signals and a custom alpha model
+   6. [`sma_crossover.py`](#6-sma_crossoverpy) — a second alpha model, and going to cash
 4. [Support modules](#support-modules)
 5. [Common options](#common-options)
 6. [Writing your own](#writing-your-own)
@@ -29,7 +30,7 @@ python examples/download_data.py --data SPY,AGG
 python examples/sixty_forty.py
 ```
 
-All five share the same defaults unless noted: **$1,000,000** initial cash, and a tearsheet saved to `out/tearsheet-<example>-<yyyymmdd-hhmmss>.png` without opening a window. Add `--show` to display it instead.
+All six share the same defaults unless noted: **$1,000,000** initial cash, and a tearsheet saved to `out/tearsheet-<example>-<yyyymmdd-hhmmss>.png` without opening a window. Add `--show` to display it instead.
 
 Any performance figures quoted below are approximate. They come from dividend-adjusted prices, which Yahoo! Finance revises over time, so your run will land near these numbers rather than exactly on them.
 
@@ -44,6 +45,7 @@ Work down the table. Each row assumes the concepts of the rows above it, and the
 | 3 | [`sixty_forty_fees.py`](#3-sixty_forty_feespy) | Fee models | Month end | — same as above |
 | 4 | [`long_short.py`](#4-long_shortpy) | Short positions and gross leverage | Month end | `TLT,IEI,SPY` |
 | 5 | [`momentum_taa.py`](#5-momentum_taapy) | Signals, a custom alpha model, a dynamic universe, burn-in | Month end | `XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY` |
+| 6 | [`sma_crossover.py`](#6-sma_crossoverpy) | A moving-average alpha model, two lookbacks, going to cash | Month end | `SPY,AGG` |
 
 To fetch everything up front instead:
 
@@ -151,14 +153,48 @@ python examples/momentum_taa.py
 
 ---
 
+## 6. `sma_crossover.py`
+
+**Difficulty: a second custom alpha model.** A moving-average trend filter over the same two assets the 60/40 portfolio holds, so the comparison isolates the allocation rule rather than the choice of assets.
+
+**What it demonstrates.**
+
+- **A custom `AlphaModel` built on `SMASignal`.** `SMACrossoverAlphaModel` holds, in equal weight, every asset whose 50 day moving average sits above its 200 day one. It is deliberately shorter than `TopNMomentumAlphaModel`: no ranking and no top-N, just a per-asset filter, which makes it the easier of the two to copy.
+- **Two lookbacks on one signal.** `SMASignal(..., lookbacks=[50, 200])` buffers both windows for every asset, so a single signal object answers both questions.
+- **Going to cash.** When neither asset is trending the model returns an all-zero weight vector. The order sizer leaves a zero-sum vector unscaled, so every position is liquidated. This is the only example that holds no position at all for a time.
+- **A like-for-like benchmark.** The benchmark is the 60/40 portfolio itself, run over the same two assets and started at the burn-in date so that both equity curves share an index.
+
+**A subtlety worth knowing.** The order sizer normalises weights to sum to unity, so holding one trending asset means holding 100% of it, not 50% with the remainder in cash. Proportional cash allocation would need a different `OrderSizer`.
+
+**Parameters.** Backtest starts 2003-09-30, burn-in ends 2004-09-30, runs to 2019-12-31. Lookbacks 50 and 200 business days, monthly rebalance, 1% cash buffer. Benchmark: 60% SPY / 40% AGG, rebalanced monthly from the burn-in date.
+
+```bash
+python examples/download_data.py --data SPY,AGG
+python examples/sma_crossover.py
+```
+
+The script prints a comparison table before writing the tearsheet:
+
+|                 | SMA Crossover | 60/40    |
+| --------------- | ------------: | -------: |
+| Total Return    |      159.14%  | 196.95%  |
+| CAGR            |        6.22%  |   7.14%  |
+| Sharpe          |         0.78  |    0.72  |
+| Sortino         |         0.89  |    0.86  |
+| Max Drawdown    |       17.59%  |  35.32%  |
+| Max DD Duration |     419 days  | 802 days |
+
+**What to look for.** The trade-off is the point: the trend filter gives up roughly 0.9 percentage points of CAGR and yet halves the maximum drawdown, which is why its Sharpe and Sortino ratios come out ahead. Read the drawdown panel alongside the equity curve. Of the 184 monthly rebalances the model was fully invested in both assets 116 times, in one asset alone 62 times, and entirely in cash 6 times — those six fall in 2006-07, 2008-07, 2008-08, 2008-10, 2008-11 and 2015-09, which is where the drawdown difference is earned.
+
+
 ## Support modules
 
-These two files live in `examples/` but are **not** examples. They exist so the five scripts above stay short and consistent.
+These two files live in `examples/` but are **not** examples. They exist so the six scripts above stay short and consistent.
 
 | File | Role |
 | ---- | ---- |
 | [`download_data.py`](download_data.py) | Standalone CLI that downloads daily OHLCV bars from Yahoo! Finance into QSTrader-compatible CSVs. Run it directly; nothing imports it. Needs `yfinance`, the `examples` dependency group — `uv sync`, or `pip install --group examples`. |
-| [`tearsheet_output.py`](tearsheet_output.py) | Imported by all five examples. Supplies the shared `--show` / `--no-save` / `--output` / `--output-dir` arguments and decides where the tearsheet is written. |
+| [`tearsheet_output.py`](tearsheet_output.py) | Imported by all six examples. Supplies the shared `--show` / `--no-save` / `--output` / `--output-dir` arguments and decides where the tearsheet is written. |
 
 The `.env` loading both of them rely on lives in the package itself, at [`qstrader/env_file.py`](../qstrader/env_file.py), because [`scripts/static_backtest.py`](../scripts/static_backtest.py) needs it too. That script takes the allocation on the command line instead of in code and is documented in the [main README](../README.md#4-the-static-allocation-script); it needs `click`, the `scripts` dependency group — `uv sync`, or `pip install --group scripts`.
 
@@ -175,4 +211,4 @@ python examples/sixty_forty.py --output out/my-chart.png    # explicit path
 
 ## Writing your own
 
-Copy `sixty_forty.py` and change the universe and alpha model — it is the shortest example that still has every piece a real backtest needs. Reach for `momentum_taa.py` as the reference once you need a custom `AlphaModel`, live signals, or a universe that changes over time.
+Copy `sixty_forty.py` and change the universe and alpha model — it is the shortest example that still has every piece a real backtest needs. Reach for `sma_crossover.py` as the reference once you need a custom `AlphaModel` driven by a signal, and `momentum_taa.py` once you also need ranking or a universe that changes over time.

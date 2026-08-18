@@ -2,7 +2,7 @@
 
 *Read this in [English](README.md).*
 
-예제 백테스트 5개를 난이도 순으로 배열했습니다. 각 예제는 `BacktestTradingSession`을 구성해 실행하고 tearsheet을 출력하는 독립 실행 스크립트이며, **직전 예제에 개념을 하나씩만 더하도록** 짜여 있습니다. 순서대로 읽으면 QSTrader API를 훑는 안내서 역할을 합니다.
+예제 백테스트 6개를 난이도 순으로 배열했습니다. 각 예제는 `BacktestTradingSession`을 구성해 실행하고 tearsheet을 출력하는 독립 실행 스크립트이며, **직전 예제에 개념을 하나씩만 더하도록** 짜여 있습니다. 순서대로 읽으면 QSTrader API를 훑는 안내서 역할을 합니다.
 
 설치, 데이터 다운로드, tearsheet 옵션은 메인 README의 [Running the Examples](../README.md#running-the-examples) 절을 참고하세요. 이 문서는 각 예제가 **무엇을 하는지**를 다룹니다.
 
@@ -16,6 +16,7 @@
    3. [`sixty_forty_fees.py`](#3-sixty_forty_feespy) — 거래 비용
    4. [`long_short.py`](#4-long_shortpy) — 공매도와 레버리지
    5. [`momentum_taa.py`](#5-momentum_taapy) — 시그널과 커스텀 알파 모델
+   6. [`sma_crossover.py`](#6-sma_crossoverpy) — 두 번째 알파 모델과 현금 보유
 4. [지원 모듈](#지원-모듈)
 5. [공통 옵션](#공통-옵션)
 6. [직접 만들어 보기](#직접-만들어-보기)
@@ -29,7 +30,7 @@ python examples/download_data.py --data SPY,AGG
 python examples/sixty_forty.py
 ```
 
-별도 언급이 없으면 5개 모두 동일한 기본값을 씁니다. 초기 자본 **$1,000,000**, tearsheet은 창을 띄우지 않고 `out/tearsheet-<예제명>-<yyyymmdd-hhmmss>.png`로 저장됩니다. 창으로 보려면 `--show`를 붙이세요.
+별도 언급이 없으면 6개 모두 동일한 기본값을 씁니다. 초기 자본 **$1,000,000**, tearsheet은 창을 띄우지 않고 `out/tearsheet-<예제명>-<yyyymmdd-hhmmss>.png`로 저장됩니다. 창으로 보려면 `--show`를 붙이세요.
 
 아래에 나오는 성과 수치는 **근사치**입니다. 배당 조정가 기준이고 Yahoo! Finance가 이를 소급 수정하기 때문에, 직접 실행하시면 근사한 값이 나오되 정확히 일치하지는 않습니다.
 
@@ -44,6 +45,7 @@ python examples/sixty_forty.py
 | 3 | [`sixty_forty_fees.py`](#3-sixty_forty_feespy) | 수수료 모델 | 월말 | — 위와 동일 |
 | 4 | [`long_short.py`](#4-long_shortpy) | 공매도 포지션, 총 레버리지 | 월말 | `TLT,IEI,SPY` |
 | 5 | [`momentum_taa.py`](#5-momentum_taapy) | 시그널, 커스텀 알파 모델, 동적 유니버스, burn-in | 월말 | `XLB,XLC,XLE,XLF,XLI,XLK,XLP,XLU,XLV,XLY` |
+| 6 | [`sma_crossover.py`](#6-sma_crossoverpy) | 이동평균 알파 모델, 두 개의 룩백, 현금 보유 | 월말 | `SPY,AGG` |
 
 한 번에 모두 받으시려면:
 
@@ -151,20 +153,54 @@ python examples/momentum_taa.py
 
 ---
 
+## 6. `sma_crossover.py`
+
+**난이도: 두 번째 커스텀 알파 모델.** 60/40 포트폴리오가 담는 것과 동일한 두 자산에 이동평균 추세 필터를 적용합니다. 자산 선택이 아니라 배분 규칙만 비교 대상이 되도록 설계했습니다.
+
+**무엇을 보여주는가.**
+
+- **`SMASignal` 기반 커스텀 `AlphaModel`.** `SMACrossoverAlphaModel`은 50일 이동평균이 200일 이동평균 위에 있는 자산만 동일 비중으로 담습니다. `TopNMomentumAlphaModel`보다 의도적으로 짧습니다 — 순위 매기기도 Top-N도 없이 자산별 필터뿐이라, 둘 중 베껴 쓰기 쉬운 쪽입니다.
+- **하나의 시그널에 두 개의 룩백.** `SMASignal(..., lookbacks=[50, 200])`은 모든 자산에 대해 두 기간의 버퍼를 함께 유지하므로, 시그널 객체 하나가 두 질문에 모두 답합니다.
+- **현금 보유.** 어느 자산도 상승 추세가 아니면 모델은 전부 0인 가중치 벡터를 반환합니다. 오더 사이저는 합이 0인 벡터를 정규화하지 않고 그대로 두므로 모든 포지션이 청산됩니다. 일정 기간 아무 포지션도 갖지 않는 유일한 예제입니다.
+- **동일 조건 벤치마크.** 벤치마크는 60/40 포트폴리오 자체이며, 같은 두 자산으로 burn-in 시점부터 실행해 두 에쿼티 커브가 같은 인덱스를 공유하도록 했습니다.
+
+**알아둘 만한 미묘한 점.** 오더 사이저가 가중치 합을 1로 정규화하므로, 추세인 자산이 하나뿐이면 그 자산을 50%가 아니라 **100%** 담습니다. 비례적으로 현금을 남기려면 다른 `OrderSizer`가 필요합니다.
+
+**파라미터.** 2003-09-30 시작, burn-in 2004-09-30 종료, 2019-12-31까지. 룩백 50일과 200일(영업일 기준), 월말 리밸런스, 현금 버퍼 1%. 벤치마크: SPY 60% / AGG 40%, burn-in 시점부터 월말 리밸런스.
+
+```bash
+python examples/download_data.py --data SPY,AGG
+python examples/sma_crossover.py
+```
+
+스크립트는 티어시트를 저장하기 전에 비교표를 출력합니다.
+
+|                 | SMA Crossover | 60/40    |
+| --------------- | ------------: | -------: |
+| 총 수익률       |      159.14%  | 196.95%  |
+| CAGR            |        6.22%  |   7.14%  |
+| 샤프 지수       |         0.78  |    0.72  |
+| 소르티노 지수   |         0.89  |    0.86  |
+| 최대 낙폭       |       17.59%  |  35.32%  |
+| 최대 낙폭 기간  |       419일   |   802일  |
+
+**무엇을 볼 것인가.** 이 예제의 핵심은 맞교환입니다. 추세 필터는 CAGR을 약 0.9%p 포기하는 대신 최대 낙폭을 절반으로 줄이며, 그 결과 샤프와 소르티노 지수는 앞섭니다. 낙폭 패널을 에쿼티 커브와 나란히 보세요. 184회의 월말 리밸런스 중 두 자산에 모두 투자한 것이 116회, 한 자산에만 투자한 것이 62회, 전액 현금이 6회였습니다. 그 6회는 2006-07, 2008-07, 2008-08, 2008-10, 2008-11, 2015-09에 몰려 있으며, 낙폭 차이는 바로 여기서 벌어집니다.
+
+
 ## 지원 모듈
 
-아래 두 파일은 `examples/`에 있지만 **예제가 아닙니다.** 위 5개 스크립트를 짧고 일관되게 유지하기 위해 존재합니다.
+아래 두 파일은 `examples/`에 있지만 **예제가 아닙니다.** 위 6개 스크립트를 짧고 일관되게 유지하기 위해 존재합니다.
 
 | 파일 | 역할 |
 | ---- | ---- |
 | [`download_data.py`](download_data.py) | Yahoo! Finance에서 일봉 OHLCV를 받아 QSTrader용 CSV로 저장하는 독립 CLI. 직접 실행하며, 어떤 파일도 이를 import 하지 않습니다. `examples` 의존성 그룹의 `yfinance`가 필요합니다 — `uv sync`, 또는 `pip install --group examples` |
-| [`tearsheet_output.py`](tearsheet_output.py) | 예제 5개가 모두 import 합니다. 공통 인자 `--show` / `--no-save` / `--output` / `--output-dir`를 제공하고 tearsheet 저장 위치를 결정합니다 |
+| [`tearsheet_output.py`](tearsheet_output.py) | 예제 6개가 모두 import 합니다. 공통 인자 `--show` / `--no-save` / `--output` / `--output-dir`를 제공하고 tearsheet 저장 위치를 결정합니다 |
 
 두 파일이 함께 쓰는 `.env` 로딩 기능은 패키지 쪽인 [`qstrader/env_file.py`](../qstrader/env_file.py)에 있습니다. [`scripts/static_backtest.py`](../scripts/static_backtest.py)도 이를 필요로 하기 때문입니다. 이 스크립트는 자산 배분을 코드가 아닌 커맨드라인으로 받으며, 설명은 [메인 README](../README.md#4-the-static-allocation-script)에 있습니다. `scripts` 의존성 그룹의 `click`이 필요합니다 — `uv sync`, 또는 `pip install --group scripts`
 
 ## 공통 옵션
 
-예제 5개 모두 동일한 출력 인자를 받습니다. 전체 목록은 아무 예제에나 `--help`를 붙여 확인하세요.
+예제 6개 모두 동일한 출력 인자를 받습니다. 전체 목록은 아무 예제에나 `--help`를 붙여 확인하세요.
 
 ```bash
 python examples/sixty_forty.py                              # 저장만 (기본값)
@@ -175,4 +211,4 @@ python examples/sixty_forty.py --output out/my-chart.png    # 경로 직접 지�
 
 ## 직접 만들어 보기
 
-`sixty_forty.py`를 복사한 뒤 유니버스와 알파 모델을 바꾸시면 됩니다. 실제 백테스트에 필요한 요소를 모두 갖춘 것 중 가장 짧은 예제입니다. 커스텀 `AlphaModel`, 실시간 갱신되는 시그널, 시간에 따라 변하는 유니버스가 필요해지면 `momentum_taa.py`를 참고 자료로 삼으세요.
+`sixty_forty.py`를 복사한 뒤 유니버스와 알파 모델을 바꾸시면 됩니다. 실제 백테스트에 필요한 요소를 모두 갖춘 것 중 가장 짧은 예제입니다. 시그널로 구동되는 커스텀 `AlphaModel`이 필요해지면 `sma_crossover.py`를, 여기에 순위 매기기나 시간에 따라 변하는 유니버스까지 필요해지면 `momentum_taa.py`를 참고 자료로 삼으세요.
