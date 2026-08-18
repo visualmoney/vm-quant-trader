@@ -80,7 +80,4 @@ class Transaction:
         `float`
             The transaction cost with commission.
         """
-        if self.commission == 0.0:
-            return self.cost_without_commission
-        else:
-            return self.cost_without_commission + self.commission
+        return self.cost_without_commission + self.commission
