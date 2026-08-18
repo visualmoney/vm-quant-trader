@@ -179,7 +179,7 @@ HWM을 첫 값으로 시딩하면 첫 행의 낙폭이 자연히 `(curve[0] - cu
 
 > **주의**: 곡선의 첫 값이 `0.0`이면 여전히 0 나눗셈이 된다. 두 호출부 모두 정규화된 누적 수익(첫 값 1.0)을 넘기므로 현재는 도달 불가지만, 함수 자체는 `create_drawdowns`를 직접 호출하는 사용자에게 공개되어 있다. 방어 코드를 넣을지는 §6의 결정 사항이다.
 
-또한 파라미터 이름을 고칠 것을 권고한다. 현재 시그니처는 `create_drawdowns(returns)`이고 docstring도 "period percentage returns"라고 적혀 있지만, **실제로 받는 것은 누적 수익 곡선(equity curve)**이다. 이름과 문서가 실제 계약과 정반대다.
+또한 파라미터 이름을 고칠 것을 권고한다. 현재 시그니처는 `create_drawdowns(returns)`이고 docstring도 "period percentage returns"라고 적혀 있지만, **실제로 받는 것은 누적 수익 곡선, 즉 equity curve**다. 이름과 문서가 실제 계약과 정반대다.
 
 ---
 
