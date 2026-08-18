@@ -141,3 +141,36 @@ def test_backtest_through_the_in_memory_source_matches_the_csv_fixture(memory_so
             assert portfolio_dict[symbol][metric] == pytest.approx(
                 expected_dict[symbol][metric]
             )
+
+
+def test_a_backtest_starting_before_the_data_fails_loudly(memory_source):
+    """
+    Checks that a backtest whose start date precedes an asset's first bar
+    raises, rather than trading it at a price the backtest cannot yet know.
+
+    Until 0.3.13 the price lookup answered such a query with the final price
+    of the series, so this backtest ran to completion on look-ahead and the
+    order sizer's guard - whose message names this exact situation - could
+    never fire.
+    """
+    assets = ['EQ:ABC', 'EQ:DEF']
+    universe = StaticUniverse(assets)
+    data_handler = BacktestDataHandler(universe, data_sources=[memory_source])
+
+    backtest = BacktestTradingSession(
+        # The fixture data begins on 2019-01-01
+        pd.Timestamp('2018-12-03 00:00:00', tz=pytz.UTC),
+        pd.Timestamp('2018-12-31 23:59:00', tz=pytz.UTC),
+        universe,
+        FixedSignalsAlphaModel({'EQ:ABC': 0.6, 'EQ:DEF': 0.4}),
+        portfolio_id='000001',
+        rebalance='end_of_month',
+        long_only=True,
+        cash_buffer_percentage=0.05,
+        data_handler=data_handler
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        backtest.run(results=False)
+
+    assert 'Not-a-Number' in str(excinfo.value)
