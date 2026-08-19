@@ -14,7 +14,7 @@
 
 ## 1. 요약
 
-**결론: 엔진 코어는 거의 손대지 않는다. 라이브는 신규 모듈 12개와 기존 파일 4곳의 국소 변경으로 붙는다.**
+**결론: 엔진 코어는 거의 손대지 않는다. 라이브는 신규 모듈 13개와 기존 파일 4곳의 국소 변경으로 붙는다.**
 
 | 구분 | 대상 | 내용 | 근거 요구 |
 | --- | --- | --- | --- |
@@ -30,6 +30,7 @@
 | **신규** | `qstrader/broker/kis/guards.py` | 주문 한도·킬스위치 | FR-19 |
 | **신규** | `qstrader/broker/kis/worker.py` | 단일 FIFO 태스크 큐 워커 — `smtm/worker.py` 이식 (lab `FillPumpWorker`로 검증됨) | FR-24, [ADR-0008](../adr/0008-task-queue-fill-pump.md) |
 | **신규(저장소 밖 경계)** | `scripts/kis_gateway.py` | OTA를 import하는 **유일한** 파일. `BrokerClient` 실구현 | NFR-3, C-1 |
+| **신규(엔진 밖·상주)** | `scripts/telegram_gateway.py` | 텔레그램 대화형 운용 데몬 — pandas·qstrader·OTA 무의존, 원장 읽기 전용 + 킬스위치 플래그 쓰기 | FR-25, NFR-10, [ADR-0010](../adr/0010-telegram-gateway-plane.md) |
 | **변경** | `qstrader/broker/broker.py` | `update(dt)`를 추상 메서드로 승격 | [ADR-0004](../adr/0004-promote-update-to-abc.md) |
 | **변경** | `qstrader/settings.py:1-4` | `SUPPORTED['CURRENCIES']`에 `'KRW'` 추가 | FR-12 |
 | **변경** | `qstrader/execution/execution_handler.py:83-86` | 주문마다 `update(dt)` 호출하는 루프의 재검토 | [ADR-0006](../adr/0006-decouple-submit-from-fill.md) |
@@ -232,6 +233,7 @@ flowchart TB
 | `data/live_data_handler.py` | `get_asset_latest_{bid,ask,bid_ask,mid}_price`를 브로커 현재가로 구현 | 과거 시계열 (신호용은 별도 소스) |
 | `trading/live.py` | **cron 단발 엔트리** ([ADR-0009](../adr/0009-cron-oneshot-live-session.md)): 기동 시 reconcile → 리밸런싱 날 여부 판정 → 사이클 1회(벽시계 시각 검증·정산 시간 예산) → 종료. 장 마감 후 별도 기동은 자본곡선 기록·대조만 수행. graceful shutdown | 사이징·알파 판단, 이벤트 사이의 대기(cron 담당) |
 | `scripts/kis_gateway.py` | OTA 인증(`svr`), `env_dv` 파생, 문자열 파라미터 변환, 레이트리밋 스로틀·재시도, DataFrame→dict | 도메인 판단 |
+| `scripts/telegram_gateway.py` | **상주 데몬** ([ADR-0010](../adr/0010-telegram-gateway-plane.md)): `getUpdates` long-polling 수신(단일 `chat_id` 필터), 원장 **읽기 전용**(`mode=ro`) 조회 응답, 킬스위치 플래그 파일 쓰기·삭제 — smtm `message_handler.py` 수신 구조 이식 (§10.4) | 엔진 코드·pandas·OTA import(NFR-10), `Portfolio` 접근, KIS 주문, 명령의 오퍼레이터 직결 배선(§10.4) |
 
 ### 3.3 심볼 매핑
 
@@ -254,6 +256,7 @@ flowchart TB
 | [0007](../adr/0007-engine-clock-timestamps.md) | 엔진 회계의 타임스탬프는 **단조 증가하는 엔진 시계**를 쓴다 (브로커 체결시각 아님) | `Portfolio`가 단조성을 강제하므로(`portfolio.py:208`) 체결시각을 쓰면 `ValueError`로 죽는다 | 체결 시각의 정밀도를 회계에서 잃는다 (원장에는 보존) |
 | [0008](../adr/0008-task-queue-fill-pump.md) | 체결 수집의 실행 기반으로 **단일 FIFO 태스크 큐 워커**(smtm `worker.py` 이식)를 채택한다. `Portfolio` 변경은 메인 스레드 전용 | 접수와 폴링이 병행되고, 정산 중에도 메인 스레드가 킬스위치·데드라인에 반응한다. lab `PumpedKisExecution`이 같은 조합을 검증했다 | 스레드 1개 도입 — 락 버퍼, 스레드별 원장 연결, 게이트웨이 스레드 안전성(NFR-8)이 필요해진다 |
 | [0009](../adr/0009-cron-oneshot-live-session.md) | `LiveTradingSession`은 **상주 프로세스가 아니라 cron 단발**이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 **별도 기동**이 기록한다 | 운용 호스트(C-15)의 관례·자원이 단발에 맞고, FR-7 재기동 복구와 ADR-0008 사이클 수명이 이미 단발을 전제한다 | 하루 2회 기동(리밸런싱·EOD)으로 갈라지고, 기동 간 상태는 원장·브로커 잔고로만 전달된다. 자본곡선 시계열의 영속화가 필요해진다 |
+| [0010](../adr/0010-telegram-gateway-plane.md) | 대화형 운용(텔레그램 조회·킬스위치)은 **분리 평면의 경량 게이트웨이 데몬**이 제공한다 — 트레이딩 평면(0009)은 무변경 | 게이트웨이(추정 30~50MiB)는 가용 260~590MiB에서 무해하나 상주 엔진(추정 100~250MiB)은 동거 실계좌 봇의 집행 슬롯(14:30~15:20)과 겹친다. 결합을 원장 읽기·플래그 파일로 한정하면 ADR-0008 스레드 경계가 적용될 일이 없다 | 호스트 최초의 상주 프로세스가 생긴다(주문 없는 읽기 전용). 계좌 현황은 실시간이 아니라 원장 스냅샷이다 |
 
 ---
 
@@ -400,7 +403,8 @@ sequenceDiagram
 | 단위 | `tests/unit/broker/test_kis_broker.py` | `Broker` ABC 12+1 메서드 | **가짜 `BrokerClient` 주입**. 매수/매도 부호 매핑, 정수 내림(0.9→0, 1.4→1), 체결 0 무거래, 부분체결, FR-18 예외 4건 |
 | 단위 | `tests/unit/broker/kis/test_ledger.py` | 원장 | 임시 SQLite. 전이 검증, fills UNIQUE 이중 반영 차단, append-only |
 | 단위 | `tests/unit/broker/kis/test_reconcile.py` | 대조 | 원장·잔고 fixture 조합. F7~F10 각각의 판정 |
-| 단위 | `tests/unit/broker/kis/test_guards.py` | 가드 | 금액 초과·건수 초과·킬스위치 |
+| 단위 | `tests/unit/broker/kis/test_guards.py` | 가드 | 금액 초과·건수 초과·킬스위치(플래그 파일 존재 시 거부 — FR-19) |
+| 단위 | `tests/unit/test_telegram_gateway.py` | 텔레그램 게이트웨이 | 가짜 텔레그램 HTTP + 임시 SQLite(읽기 전용 URI). 명령 3종 응답, 타 `chat_id` 무시, 플래그 생성·삭제, pandas·qstrader import 부재 (FR-25, NFR-10) |
 | 단위 | `tests/unit/broker/kis/test_worker.py` | 태스크 큐 워커 | FIFO 순서 보존, `None` 센티넬 종료(적재분 전부 소화 후 종료 — 유실 0), `join_tasks()` 배리어, `on_error` 경로, `stop()` 후 재기동 멱등. 스레드가 1개뿐이므로 동기화 테스트가 아니라 **순서 테스트**다 |
 | 단위 | `tests/unit/broker/test_kis_broker_settle.py` | 정산 스레드 경계 | 가짜 클라이언트 + 주입 `sleep`·가짜 시계. (a) 접수·폴링 병행(FR-24), (b) 워커 경로 `transact_asset` 부재 — 버퍼 경유만(NFR-8), (c) 데드라인 조기 종료·STALE, (d) 킬스위치 중 정산 중단 |
 | 단위 | `tests/unit/broker/fee_model/test_korea_fee_model.py` | 매도세 비대칭 | 동일 규모 매수/매도 비교 (기존 `test_percent_fee_model.py`와 나란히) |
@@ -562,6 +566,7 @@ trading/backtest.py:437-442    if event.event_type == "market_close":
 | 시뮬레이션 동형성 | `smtm/trader/simulation_trader.py:48-50` | 같은 인터페이스에서 콜백을 **즉시** 호출 |
 | 타임스탬프 분기 | `smtm/trader/trader.py:41` | *"거래 체결 시간, 시뮬레이션 모드에서는 request의 시간"* |
 | 취소 | `smtm/trader/trader.py:46,52` | `cancel_request` / `cancel_all_requests`가 **ABC 1급 시민** |
+| 텔레그램 수신 구조 (와 그 한계) | `controller/telegram/message_handler.py:9-16, 30, 89-104, 130-133, 146-149`, `controller/telegram/telegram_controller.py:38, 82-96` | 텔레그램 SDK 없이 `requests`+표준 라이브러리만 import(`:9-16`), daemon 스레드의 `getUpdates` long-polling(`timeout=10`, `:30`·`:146-149`, 루프 `:89-104`), 단일 `chat_id` 필터(`:130-131`), 송신은 워커 큐 비동기. **단, 명령 콜백(`operator.chat`)이 폴링 스레드에서 실행되고(`telegram_controller.py:38, 85-96`) 메인 스레드는 sleep만 한다(`:82-83`)** — 수신 구조는 게이트웨이에 이식하되 이 직결 배선은 이식하지 않는다 ([ADR-0010](../adr/0010-telegram-gateway-plane.md)) |
 
 두 가지가 특히 시사적이다.
 
@@ -717,3 +722,4 @@ flowchart LR
 | Q8 | 실전(`prod`) 승격 기준 | A-1~A-5는 모의투자까지만 요구한다. 실전 전환 체크리스트가 별도로 필요 | 후속 |
 | Q9 | 보고서 04의 L1(시간분할 실행 불가)이 라이브에서 더 아픈가? | 시장가 일괄 주문은 대형 리밸런싱에서 시장충격을 받는다. 실행 알고리즘 주입 지점은 v0.3.13에서 확보됨 | 후속 |
 | Q10 | ~~`LiveTradingSession`은 **상주 프로세스**인가, **cron 단발**인가?~~ **해소 (2026-08-19)** — [ADR-0009](../adr/0009-cron-oneshot-live-session.md)가 **cron 단발**로 결정. 호스트(스펙 C-15)의 관례·자원, FR-7 재기동 복구, ADR-0008의 사이클 수명이 근거. 자본곡선은 장 마감 후 별도 기동이 영속 저장에 기록(§10.2-b) | `trading/live.py`는 대기 루프가 아니라 단발 엔트리가 된다 (§3.2) | 해소 |
+| Q11 | ~~대화형 운용(텔레그램 계좌·주문 조회, 거래 중지)은 어느 평면이 제공하는가 — Q10의 단발 결정과 충돌하지 않는가?~~ **해소 (2026-08-20)** — [ADR-0010](../adr/0010-telegram-gateway-plane.md)이 **분리 평면의 경량 게이트웨이 데몬**으로 결정. 트레이딩 평면(ADR-0009)은 무변경, 결합은 원장 읽기·킬스위치 플래그 파일뿐 | `scripts/telegram_gateway.py` 신설(FR-25, NFR-10). 킬스위치 매체가 플래그 파일로 확정(FR-19) | 해소 |
