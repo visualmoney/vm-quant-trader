@@ -1,8 +1,10 @@
 # ADR-0002: 체결 폴링은 `submit_order()` 안에서 블로킹한다
 
+> **폐기됨.** 이 결정의 기각 논리가 틀렸다 — 블로킹은 주문을 직렬화해 스냅샷 충실도를 오히려 떨어뜨린다. [ADR-0006](0006-decouple-submit-from-fill.md)과 설계안 §10.1~10.3을 볼 것. 아래 본문은 **결정 당시의 기록**이며 고쳐 쓰지 않는다.
+
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현 |
+| 상태 | **폐기됨 (Superseded)** — [ADR-0006](0006-decouple-submit-from-fill.md)이 대체한다 (2026-08-19) |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §2.1, §6 |
 | 관련 요구 | FR-3·FR-16, NFR-7, C-7 ([spec/kis-broker.md](../spec/kis-broker.md)) |
@@ -41,4 +43,4 @@ execution_handler.py:83-86    for order in final_orders:
 
 - `submit_order`가 **느리고 블로킹**한다. `Broker` ABC docstring이 기술한 *"It contains a queue of open orders"*(`broker.py:20-21`) 모델에서 벗어난다.
 - 종목 20개면 최악 20 × (`poll_interval` × `max_polls`)이 걸린다. **NFR-7(10분 이내) 상한 검증이 필수**다.
-- `execution_handler.py:86`의 `update(dt)` 호출이 폴링 직후 시가평가·잔고조회를 유발해 **불필요한 API 호출**이 된다. 라이브 경로에서는 `update`가 최소 호출 간격(throttle)을 갖도록 한다 — 구체적 방식은 설계안 §10의 Q4로 남는다.
+- `execution_handler.py:86`의 `update(dt)` 호출이 폴링 직후 시가평가·잔고조회를 유발해 **불필요한 API 호출**이 된다. 라이브 경로에서는 `update`가 최소 호출 간격(throttle)을 갖도록 한다 — 구체적 방식은 설계안 §11의 Q4로 남는다.
