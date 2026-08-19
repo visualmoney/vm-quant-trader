@@ -18,7 +18,7 @@ QSTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 
 | 문서 | 상태 | 요약 |
 | --- | --- | --- |
-| [kis-broker.md](dev/spec/kis-broker.md) | **초안 · 미구현** | 한국투자증권 라이브 브로커 연동 요구사항 — 범위/비범위, 기능요구 24건(FR), 비기능요구 8건(NFR), 제약 14건(C), 인수기준 5건(A) |
+| [kis-broker.md](dev/spec/kis-broker.md) | **초안 · 미구현** | 한국투자증권 라이브 브로커 연동 요구사항 — 범위/비범위, 기능요구 24건(FR), 비기능요구 9건(NFR), 제약 15건(C), 인수기준 5건(A) |
 | [kis-broker-design.md](dev/spec/kis-broker-design.md) | **초안 · 미구현** | 위 스펙에 대한 설계안 — 라이브를 가로막는 현행 구조 7종, 신규 모듈 12개, 인터페이스 매핑, 실패 모드 17종, 시간 모델·비동기 체결 재검토(§10), 3단계 구현 계획 |
 
 ### `dev/adr/` — 설계 결정 기록
@@ -35,6 +35,7 @@ QSTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0006](dev/adr/0006-decouple-submit-from-fill.md) | 제안됨 | 주문 접수와 체결 반영을 분리한다 — `submit_order()`는 접수만, 정산 단계가 시간 예산 안에서 체결을 수집한다 (0002 대체) |
 | [0007](dev/adr/0007-engine-clock-timestamps.md) | 제안됨 | 엔진 회계의 타임스탬프는 단조 증가하는 엔진 시계를 쓴다 — 브로커 체결시각은 원장에만 기록한다 |
 | [0008](dev/adr/0008-task-queue-fill-pump.md) | 제안됨 | 체결 수집의 실행 기반으로 단일 FIFO 태스크 큐 워커(smtm `worker.py` 이식)를 채택한다 — `Portfolio` 변경은 메인 스레드 전용 |
+| [0009](dev/adr/0009-cron-oneshot-live-session.md) | 제안됨 | `LiveTradingSession`은 상주 프로세스가 아니라 cron 단발이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 별도 기동이 기록한다 |
 
 ### `dev/reports/` — 시점별 조사 보고서
 
