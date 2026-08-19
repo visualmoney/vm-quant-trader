@@ -7,7 +7,7 @@
 | 관점 | Software Architect |
 | 상태 | **설계 초안 — 미구현** |
 | 근거 스펙 | [kis-broker.md](kis-broker.md) (FR/NFR/C 번호는 이 문서를 가리킨다) |
-| 설계 결정 | [ADR-0001 ~ ADR-0008](../adr/) — §4 참조 (0002는 폐기됨) |
+| 설계 결정 | [ADR-0001 ~ ADR-0009](../adr/) — §4 참조 (0002는 폐기됨) |
 | 참조 구현 | `vm-quant-lab` — `packages/adapters/live/`, `packages/brokers/kis/` (가동 중) |
 
 ---
@@ -99,7 +99,7 @@ backtest.py:245-247 return DailyBusinessDaySimulationEngine(self.start_dt, self.
 backtest.py:401     for event in self.sim_engine:
 ```
 
-`DailyBusinessDaySimulationEngine._generate_business_days`(`simulation/daily_bday.py:51`)는 `pd.date_range(..., freq=BDay())`로 **전 구간을 즉시 생성**한다(`:61-63`). 미래 타임스탬프를 미리 아는 구조이므로 라이브에 그대로 쓸 수 없다. 라이브는 "지금이 몇 시인가"를 벽시계에서 읽고 다음 이벤트까지 **대기**해야 한다.
+`DailyBusinessDaySimulationEngine._generate_business_days`(`simulation/daily_bday.py:51`)는 `pd.date_range(..., freq=BDay())`로 **전 구간을 즉시 생성**한다(`:61-63`). 미래 타임스탬프를 미리 아는 구조이므로 라이브에 그대로 쓸 수 없다. 라이브는 "지금이 몇 시인가"를 벽시계에서 읽어야 한다. 단, **다음 이벤트까지의 대기를 프로세스 안에서 하지는 않는다** — 라이브의 하루 이벤트는 리밸런싱 1회와 장 마감 기록 1회뿐이므로, 이벤트 사이의 대기는 cron이 담당하고 프로세스는 기동 1회 = 사이클 1회로 끝난다 ([ADR-0009](../adr/0009-cron-oneshot-live-session.md)). 프로세스 안에 남는 대기는 정산 시간 예산(FR-23) 안의 사이클 내 대기뿐이다.
 
 ### 2.5 거래소 캘린더가 NYSE 하드코딩이고, 라이브 `DataHandler`가 없다
 
@@ -230,7 +230,7 @@ flowchart TB
 | `broker/fee_model/korea_fee_model.py` | `quantity` 부호로 매수/매도 구분, 매도에만 거래세 | 세율 조회 (생성자 인자) |
 | `exchange/krx_exchange.py` | KST 장운영시간 + 휴장일 집합 판정 | 시세 제공 |
 | `data/live_data_handler.py` | `get_asset_latest_{bid,ask,bid_ask,mid}_price`를 브로커 현재가로 구현 | 과거 시계열 (신호용은 별도 소스) |
-| `trading/live.py` | 벽시계 기반 리밸런싱 루프, 기동 시 reconcile, graceful shutdown | 사이징·알파 판단 |
+| `trading/live.py` | **cron 단발 엔트리** ([ADR-0009](../adr/0009-cron-oneshot-live-session.md)): 기동 시 reconcile → 리밸런싱 날 여부 판정 → 사이클 1회(벽시계 시각 검증·정산 시간 예산) → 종료. 장 마감 후 별도 기동은 자본곡선 기록·대조만 수행. graceful shutdown | 사이징·알파 판단, 이벤트 사이의 대기(cron 담당) |
 | `scripts/kis_gateway.py` | OTA 인증(`svr`), `env_dv` 파생, 문자열 파라미터 변환, 레이트리밋 스로틀·재시도, DataFrame→dict | 도메인 판단 |
 
 ### 3.3 심볼 매핑
@@ -253,6 +253,7 @@ flowchart TB
 | [0006](../adr/0006-decouple-submit-from-fill.md) | **주문 접수와 체결 반영을 분리**한다 (ADR-0002 대체) | 블로킹은 주문을 직렬화해 스냅샷 충실도를 오히려 떨어뜨리고, 그동안 아무것에도 반응할 수 없다 | 리밸런싱에 시간 예산과 정산(settle) 단계가 필요해진다 |
 | [0007](../adr/0007-engine-clock-timestamps.md) | 엔진 회계의 타임스탬프는 **단조 증가하는 엔진 시계**를 쓴다 (브로커 체결시각 아님) | `Portfolio`가 단조성을 강제하므로(`portfolio.py:208`) 체결시각을 쓰면 `ValueError`로 죽는다 | 체결 시각의 정밀도를 회계에서 잃는다 (원장에는 보존) |
 | [0008](../adr/0008-task-queue-fill-pump.md) | 체결 수집의 실행 기반으로 **단일 FIFO 태스크 큐 워커**(smtm `worker.py` 이식)를 채택한다. `Portfolio` 변경은 메인 스레드 전용 | 접수와 폴링이 병행되고, 정산 중에도 메인 스레드가 킬스위치·데드라인에 반응한다. lab `PumpedKisExecution`이 같은 조합을 검증했다 | 스레드 1개 도입 — 락 버퍼, 스레드별 원장 연결, 게이트웨이 스레드 안전성(NFR-8)이 필요해진다 |
+| [0009](../adr/0009-cron-oneshot-live-session.md) | `LiveTradingSession`은 **상주 프로세스가 아니라 cron 단발**이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 **별도 기동**이 기록한다 | 운용 호스트(C-15)의 관례·자원이 단발에 맞고, FR-7 재기동 복구와 ADR-0008 사이클 수명이 이미 단발을 전제한다 | 하루 2회 기동(리밸런싱·EOD)으로 갈라지고, 기동 간 상태는 원장·브로커 잔고로만 전달된다. 자본곡선 시계열의 영속화가 필요해진다 |
 
 ---
 
@@ -362,7 +363,7 @@ sequenceDiagram
     end
     end
 
-    Note over LTS: 장 마감 시각에 자본곡선 1회 기록 (§10.2-b)
+    Note over LTS: 자본곡선은 장 마감 후 별도 기동이 1회 기록 (§10.2-b, ADR-0009)
 ```
 
 ## 7. 실패 모드와 대응
@@ -453,7 +454,7 @@ sequenceDiagram
 | `scripts/kis_gateway.py` | OTA 래핑, 인증, 스로틀·재시도, 심볼 변환 |
 | `trading/live.py` | `LiveTradingSession` |
 | `broker/kis/reconcile.py` | 기동 대조 |
-| 문서 | 운용 가이드 (`docs/user/`) |
+| 문서 | 운용 가이드 (`docs/user/`) — cron 엔트리 2종(리밸런싱·EOD)의 슬롯 선정, flock 잠금 파일, 동거 봇 슬롯 회피는 **운용 사안**으로 여기에 기록한다 (ADR-0009 결과) |
 | 검증 | 모의투자 스모크 (A-3·A-4·A-5) |
 
 **여기까지면**: `vps` 계좌에서 실제 리밸런싱이 돈다. 인수 기준 전건 달성.
@@ -520,7 +521,7 @@ trading/backtest.py:437-442    if event.event_type == "market_close":
                                    self._update_equity_curve(dt)
 ```
 
-리밸런싱 종료 시점에 기록하면 백테스트와 다른 시계열이 나온다. 라이브도 `market_close` 상당 시각에 한 번만 기록해야 통계 계층이 백테스트와 같은 의미를 갖는다.
+리밸런싱 종료 시점에 기록하면 백테스트와 다른 시계열이 나온다. 라이브도 `market_close` 상당 시각에 한 번만 기록해야 통계 계층이 백테스트와 같은 의미를 갖는다. 단발 모델([ADR-0009](../adr/0009-cron-oneshot-live-session.md))에서 이 기록은 리밸런싱 기동이 아니라 장 마감(15:30) 후의 **별도 기동**이 수행한다 — 리밸런싱 프로세스가 마감까지 살아 있기를 요구하지 않기 위해서다. 백테스트의 자본곡선은 인메모리 리스트지만 라이브는 기동이 매번 죽으므로, 이 시계열은 **영속 저장**(원장 DB의 별도 테이블)에 append한다.
 
 #### (c) 리밸런싱이 시간 구간을 점유할 때 `Portfolio.current_dt`의 의미
 
@@ -715,3 +716,4 @@ flowchart LR
 | Q7 | 미체결 잔량의 취소·재시도 | 현재는 STALE로 두고 다음 리밸런싱이 흡수. 슬리피지 누적 시 재검토 | 후속 |
 | Q8 | 실전(`prod`) 승격 기준 | A-1~A-5는 모의투자까지만 요구한다. 실전 전환 체크리스트가 별도로 필요 | 후속 |
 | Q9 | 보고서 04의 L1(시간분할 실행 불가)이 라이브에서 더 아픈가? | 시장가 일괄 주문은 대형 리밸런싱에서 시장충격을 받는다. 실행 알고리즘 주입 지점은 v0.3.13에서 확보됨 | 후속 |
+| Q10 | ~~`LiveTradingSession`은 **상주 프로세스**인가, **cron 단발**인가?~~ **해소 (2026-08-19)** — [ADR-0009](../adr/0009-cron-oneshot-live-session.md)가 **cron 단발**로 결정. 호스트(스펙 C-15)의 관례·자원, FR-7 재기동 복구, ADR-0008의 사이클 수명이 근거. 자본곡선은 장 마감 후 별도 기동이 영속 저장에 기록(§10.2-b) | `trading/live.py`는 대기 루프가 아니라 단발 엔트리가 된다 (§3.2) | 해소 |
