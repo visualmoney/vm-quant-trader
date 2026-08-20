@@ -5,10 +5,11 @@ __pycache__
 cover
 
 # downloaded CSV price data (QSTRADER_CSV_DATA_DIR)
-# leading slash so that the tracked qstrader/data package is not ignored
+# leading slash so that the tracked vmtrader/data package is not ignored
 /data/
 
-# backtest output such as saved tearsheets (QSTRADER_OUTPUT_DIR)
+# run artefacts: tearsheets (VMTRADER_OUTPUT_DIR), smoke ledgers,
+# kill-switch flags
 out
 
 # environment
@@ -53,6 +54,3 @@ coverage.lcov
 
 # Editor settings
 .vscode/
-
-# Run artefacts: tearsheets, smoke ledgers, kill-switch flags
-out/
