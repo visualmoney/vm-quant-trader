@@ -4,8 +4,8 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.execution.order import Order
-from qstrader.portcon.pcm import PortfolioConstructionModel
+from vmtrader.execution.order import Order
+from vmtrader.portcon.pcm import PortfolioConstructionModel
 
 
 SENTINEL_DT = pd.Timestamp('2019-01-01 15:00:00', tz=pytz.utc)

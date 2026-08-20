@@ -13,7 +13,7 @@
 
 ## 결정
 
-**복사·번역해 이식한다.** qstrader 규약(4-space 들여쓰기, numpy-style docstring, 영문 코드 주석)에 맞추어 옮기고, **lab 패키지를 의존성으로 추가하지 않는다.**
+**복사·번역해 이식한다.** vmtrader 규약(4-space 들여쓰기, numpy-style docstring, 영문 코드 주석)에 맞추어 옮기고, **lab 패키지를 의존성으로 추가하지 않는다.**
 
 ## 검토한 대안
 
@@ -24,7 +24,7 @@
 
 ## 근거
 
-**대안 1 — 도메인 모델이 다르다.** lab은 `Fill`/`Side`/`TargetWeights`/`MarketSlice`(`vmquant.core.contracts`)를 쓰고 qstrader는 `Order`/`Transaction`/`Position`을 쓴다. lab 어댑터를 그대로 쓰면 두 모델 사이 변환 계층이 생겨 **오히려 코드가 늘어난다.** 게다가 lab은 별개 라이프사이클의 사유 저장소라 qstrader 릴리스가 거기 묶인다.
+**대안 1 — 도메인 모델이 다르다.** lab은 `Fill`/`Side`/`TargetWeights`/`MarketSlice`(`vmquant.core.contracts`)를 쓰고 vmtrader는 `Order`/`Transaction`/`Position`을 쓴다. lab 어댑터를 그대로 쓰면 두 모델 사이 변환 계층이 생겨 **오히려 코드가 늘어난다.** 게다가 lab은 별개 라이프사이클의 사유 저장소라 vmtrader 릴리스가 거기 묶인다.
 
 **대안 2 — 실계좌에서 이미 밟은 함정을 버린다.** 문서를 읽어서는 나오지 않고 실패해 봐야 알 수 있는 지식이 최소 세 가지 있다.
 
@@ -38,4 +38,4 @@
 
 - **코드 중복**이 생긴다. lab에서 버그가 고쳐져도 자동 전파되지 않는다.
 - 완화책: 이식한 모듈의 docstring에 **출처 파일 경로와 이식 시점**을 명기하고, `docs/dev/`에 대응표를 유지한다.
-- 반대급부로 qstrader는 KIS 연동에 대해 **자기완결적**이 된다 — OTA도, lab도 설치 없이 전 테스트가 통과한다 (NFR-2).
+- 반대급부로 vmtrader는 KIS 연동에 대해 **자기완결적**이 된다 — OTA도, lab도 설치 없이 전 테스트가 통과한다 (NFR-2).

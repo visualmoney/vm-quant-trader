@@ -1,8 +1,8 @@
 import pandas as pd
 import pytest
 
-from qstrader.asset.equity import Equity
-from qstrader.broker.transaction.transaction import Transaction
+from vmtrader.asset.equity import Equity
+from vmtrader.broker.transaction.transaction import Transaction
 
 
 def test_transaction_representation():

@@ -5,7 +5,7 @@ import pytest
 import pytz
 
 
-from qstrader.portcon.order_sizer.long_short import (
+from vmtrader.portcon.order_sizer.long_short import (
     LongShortLeveragedOrderSizer
 )
 

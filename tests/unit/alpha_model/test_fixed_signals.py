@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
 
 
 @pytest.mark.parametrize(

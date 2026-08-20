@@ -50,3 +50,6 @@ coverage.lcov
 
 # Textmate (a Mac editor) meta files
 ._*
+
+# Editor settings
+.vscode/

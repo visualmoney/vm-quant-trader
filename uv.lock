@@ -1744,67 +1744,6 @@ wheels = [
 ]
 
 [[package]]
-name = "qstrader"
-version = "0.3.16"
-source = { editable = "." }
-dependencies = [
-    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "matplotlib", version = "3.11.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pytz" },
-    { name = "seaborn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "click" },
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "yfinance" },
-]
-examples = [
-    { name = "yfinance" },
-]
-scripts = [
-    { name = "click" },
-]
-test = [
-    { name = "pytest" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "matplotlib", specifier = ">=3.8" },
-    { name = "numpy", specifier = ">=2.0.0" },
-    { name = "pandas", specifier = ">=2.2" },
-    { name = "pytz", specifier = ">=2020.1" },
-    { name = "seaborn", specifier = ">=0.13" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "click", specifier = ">=8.0" },
-    { name = "pytest", specifier = ">=5.2.2" },
-    { name = "pytest-cov", specifier = ">=2.8.1" },
-    { name = "ruff", specifier = ">=0.14" },
-    { name = "yfinance", specifier = ">=1.2.0" },
-]
-examples = [{ name = "yfinance", specifier = ">=1.2.0" }]
-scripts = [{ name = "click", specifier = ">=8.0" }]
-test = [
-    { name = "pytest", specifier = ">=5.2.2" },
-    { name = "pytest-cov", specifier = ">=2.8.1" },
-    { name = "ruff", specifier = ">=0.14" },
-]
-
-[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1959,6 +1898,67 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+]
+
+[[package]]
+name = "vmtrader"
+version = "0.3.16"
+source = { editable = "." }
+dependencies = [
+    { name = "matplotlib", version = "3.10.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "matplotlib", version = "3.11.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "pandas", version = "3.0.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "pytz" },
+    { name = "seaborn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "click" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "yfinance" },
+]
+examples = [
+    { name = "yfinance" },
+]
+scripts = [
+    { name = "click" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "matplotlib", specifier = ">=3.8" },
+    { name = "numpy", specifier = ">=2.0.0" },
+    { name = "pandas", specifier = ">=2.2" },
+    { name = "pytz", specifier = ">=2020.1" },
+    { name = "seaborn", specifier = ">=0.13" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "click", specifier = ">=8.0" },
+    { name = "pytest", specifier = ">=5.2.2" },
+    { name = "pytest-cov", specifier = ">=2.8.1" },
+    { name = "ruff", specifier = ">=0.14" },
+    { name = "yfinance", specifier = ">=1.2.0" },
+]
+examples = [{ name = "yfinance", specifier = ">=1.2.0" }]
+scripts = [{ name = "click", specifier = ">=8.0" }]
+test = [
+    { name = "pytest", specifier = ">=5.2.2" },
+    { name = "pytest-cov", specifier = ">=2.8.1" },
+    { name = "ruff", specifier = ">=0.14" },
 ]
 
 [[package]]

@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.asset.universe.static import StaticUniverse
+from vmtrader.asset.universe.static import StaticUniverse
 
 
 @pytest.mark.parametrize(

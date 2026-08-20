@@ -5,15 +5,15 @@ import click
 import pandas as pd
 import pytz
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.equity import Equity
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.data.backtest_data_handler import BacktestDataHandler
-from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
-from qstrader.env_file import load_env_file
-from qstrader.statistics.json_statistics import JSONStatistics
-from qstrader.statistics.tearsheet import TearsheetStatistics
-from qstrader.trading.backtest import BacktestTradingSession
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.equity import Equity
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.data.backtest_data_handler import BacktestDataHandler
+from vmtrader.data.daily_bar_csv import CSVDailyBarDataSource
+from vmtrader.env_file import load_env_file
+from vmtrader.statistics.json_statistics import JSONStatistics
+from vmtrader.statistics.tearsheet import TearsheetStatistics
+from vmtrader.trading.backtest import BacktestTradingSession
 
 
 DATE_FORMAT = '%Y-%m-%d'
@@ -22,7 +22,7 @@ DATE_FORMAT = '%Y-%m-%d'
 def obtain_allocations(allocations):
     """
     Converts the provided command-line allocations string
-    into a dictionary used for QSTrader.
+    into a dictionary used for VMTrader.
 
     Parameters
     ----------
@@ -127,7 +127,7 @@ def to_timestamp(date, end_of_day=False):
     '--output-dir', 'output_dir', default=None, type=click.Path(),
     help=(
         'Directory to write the JSON statistics into. Defaults to the '
-        'QSTRADER_OUTPUT_DIR environment variable, or the current directory.'
+        'VMTRADER_OUTPUT_DIR environment variable, or the current directory.'
     )
 )
 @click.option(
@@ -145,14 +145,14 @@ def cli(
     start_date, end_date, alloc_dict, strat_title, strat_id,
     output_dir, tearsheet, tearsheet_file
 ):
-    # Pick up QSTRADER_CSV_DATA_DIR and friends from a '.env' file, if present.
+    # Pick up VMTRADER_CSV_DATA_DIR and friends from a '.env' file, if present.
     # Variables already set in the environment take precedence.
     load_env_file()
 
-    csv_dir = os.environ.get('QSTRADER_CSV_DATA_DIR', '.')
+    csv_dir = os.environ.get('VMTRADER_CSV_DATA_DIR', '.')
 
     if output_dir is None:
-        output_dir = os.environ.get('QSTRADER_OUTPUT_DIR', '.')
+        output_dir = os.environ.get('VMTRADER_OUTPUT_DIR', '.')
 
     start_dt = to_timestamp(start_date)
 

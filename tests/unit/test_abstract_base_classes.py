@@ -4,39 +4,39 @@ import inspect
 import pandas as pd
 import pytest
 
-from qstrader.alpha_model.alpha_model import AlphaModel
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.asset import Asset
-from qstrader.asset.equity import Equity
-from qstrader.asset.universe.universe import Universe
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.broker.broker import Broker
-from qstrader.broker.fee_model.fee_model import FeeModel
-from qstrader.broker.fee_model.zero_fee_model import ZeroFeeModel
-from qstrader.exchange.exchange import Exchange
-from qstrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
-from qstrader.execution.execution_algo.market_order import (
+from vmtrader.alpha_model.alpha_model import AlphaModel
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.asset import Asset
+from vmtrader.asset.equity import Equity
+from vmtrader.asset.universe.universe import Universe
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.broker.broker import Broker
+from vmtrader.broker.fee_model.fee_model import FeeModel
+from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
+from vmtrader.exchange.exchange import Exchange
+from vmtrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
+from vmtrader.execution.execution_algo.market_order import (
     MarketOrderExecutionAlgorithm
 )
-from qstrader.portcon.optimiser.optimiser import PortfolioOptimiser
-from qstrader.portcon.optimiser.equal_weight import (
+from vmtrader.portcon.optimiser.optimiser import PortfolioOptimiser
+from vmtrader.portcon.optimiser.equal_weight import (
     EqualWeightPortfolioOptimiser
 )
-from qstrader.portcon.optimiser.fixed_weight import (
+from vmtrader.portcon.optimiser.fixed_weight import (
     FixedWeightPortfolioOptimiser
 )
-from qstrader.portcon.order_sizer.order_sizer import OrderSizer
-from qstrader.risk_model.risk_model import RiskModel
-from qstrader.signals.signal import Signal
-from qstrader.simulation.sim_engine import SimulationEngine
-from qstrader.statistics.statistics import Statistics
-from qstrader.statistics.tearsheet import TearsheetStatistics
-from qstrader.system.rebalance.rebalance import Rebalance
-from qstrader.system.rebalance.buy_and_hold import BuyAndHoldRebalance
-from qstrader.system.rebalance.daily import DailyRebalance
-from qstrader.system.rebalance.end_of_month import EndOfMonthRebalance
-from qstrader.system.rebalance.weekly import WeeklyRebalance
-from qstrader.trading.trading_session import TradingSession
+from vmtrader.portcon.order_sizer.order_sizer import OrderSizer
+from vmtrader.risk_model.risk_model import RiskModel
+from vmtrader.signals.signal import Signal
+from vmtrader.simulation.sim_engine import SimulationEngine
+from vmtrader.statistics.statistics import Statistics
+from vmtrader.statistics.tearsheet import TearsheetStatistics
+from vmtrader.system.rebalance.rebalance import Rebalance
+from vmtrader.system.rebalance.buy_and_hold import BuyAndHoldRebalance
+from vmtrader.system.rebalance.daily import DailyRebalance
+from vmtrader.system.rebalance.end_of_month import EndOfMonthRebalance
+from vmtrader.system.rebalance.weekly import WeeklyRebalance
+from vmtrader.trading.trading_session import TradingSession
 
 
 # Every abstract base class in the package. Prior to the Python 3 conversion

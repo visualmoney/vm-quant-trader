@@ -1,12 +1,12 @@
 # file: examples/tearsheet_output.py
 """
-Shared tearsheet output handling for the QSTrader examples.
+Shared tearsheet output handling for the VMTrader examples.
 
 By default the examples run headless: the tearsheet is written to
 'out/tearsheet-<name>-<yyyymmdd-hhmmss>.png' relative to the repository root
 and no interactive window is opened. Pass '--show' to display it instead.
 
-Settings are also read from a '.env' file, via 'qstrader.env_file'.
+Settings are also read from a '.env' file, via 'vmtrader.env_file'.
 
 Usage
 -----
@@ -28,7 +28,7 @@ import argparse
 import datetime
 import os
 
-from qstrader.env_file import load_env_file
+from vmtrader.env_file import load_env_file
 
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,10 +43,10 @@ def default_output_dir():
     Returns
     -------
     `str`
-        The QSTRADER_OUTPUT_DIR environment variable if set, otherwise the
+        The VMTRADER_OUTPUT_DIR environment variable if set, otherwise the
         'out' directory at the repository root.
     """
-    return os.environ.get('QSTRADER_OUTPUT_DIR', os.path.join(REPO_ROOT, 'out'))
+    return os.environ.get('VMTRADER_OUTPUT_DIR', os.path.join(REPO_ROOT, 'out'))
 
 
 def example_name(example_file):
@@ -77,7 +77,7 @@ def default_filename(name, output_dir=None, now=None):
         The example slug. e.g. 'sixty-forty'.
     output_dir : `str`, optional
         The directory to write into. Defaults to the 'out' directory at the
-        repository root, or the QSTRADER_OUTPUT_DIR environment variable.
+        repository root, or the VMTRADER_OUTPUT_DIR environment variable.
     now : `datetime.datetime`, optional
         The timestamp to embed. Defaults to the current local time.
 
@@ -135,7 +135,7 @@ def add_arguments(parser):
         metavar='DIR',
         help=(
             "차트를 저장할 디렉토리. "
-            "(기본값: 환경변수 QSTRADER_OUTPUT_DIR 또는 '.env'의 값, "
+            "(기본값: 환경변수 VMTRADER_OUTPUT_DIR 또는 '.env'의 값, "
             "없으면 저장소 루트의 'out')"
         )
     )
@@ -160,7 +160,7 @@ def parse_args(example_file, description=None, argv=None):
     `argparse.Namespace`
         The parsed arguments, with an added 'example_name' attribute.
     """
-    # 예제 본문이 QSTRADER_CSV_DATA_DIR 등을 읽기 전에 '.env'를 반영한다.
+    # 예제 본문이 VMTRADER_CSV_DATA_DIR 등을 읽기 전에 '.env'를 반영한다.
     # 셸에 이미 설정된 값은 덮어쓰지 않는다.
     load_env_file()
 
@@ -168,7 +168,7 @@ def parse_args(example_file, description=None, argv=None):
     parser = argparse.ArgumentParser(
         prog='%s.py' % name.replace('-', '_'),
         description=description or (
-            "QSTrader 예제 백테스트를 실행하고 tearsheet 차트를 생성합니다."
+            "VMTrader 예제 백테스트를 실행하고 tearsheet 차트를 생성합니다."
         ),
         epilog=(
             '사용 예시:\n'

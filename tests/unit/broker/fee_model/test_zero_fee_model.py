@@ -1,4 +1,4 @@
-from qstrader.broker.fee_model.zero_fee_model import ZeroFeeModel
+from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 
 
 class AssetMock:

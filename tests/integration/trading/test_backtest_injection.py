@@ -4,16 +4,16 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.portcon.optimiser.equal_weight import (
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.portcon.optimiser.equal_weight import (
     EqualWeightPortfolioOptimiser
 )
-from qstrader.trading.backtest import BacktestTradingSession
+from vmtrader.trading.backtest import BacktestTradingSession
 
 
 def _run(etf_filepath, **kwargs):
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
 
     universe = StaticUniverse(['EQ:ABC', 'EQ:DEF'])
 
@@ -62,7 +62,7 @@ def test_an_injected_execution_algo_is_used(etf_filepath):
     Checks that a supplied ExecutionAlgorithm reaches the execution handler
     and that discarding every order leaves the portfolio untraded.
     """
-    from qstrader.execution.execution_algo.execution_algo import (
+    from vmtrader.execution.execution_algo.execution_algo import (
         ExecutionAlgorithm
     )
 

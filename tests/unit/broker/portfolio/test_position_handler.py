@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import pytz
 
-from qstrader.broker.portfolio.position_handler import PositionHandler
-from qstrader.broker.transaction.transaction import Transaction
+from vmtrader.broker.portfolio.position_handler import PositionHandler
+from vmtrader.broker.transaction.transaction import Transaction
 
 
 def test_transact_position_new_position():

@@ -2,8 +2,8 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.simulation.daily_bday import DailyBusinessDaySimulationEngine
-from qstrader.simulation.event import SimulationEvent
+from vmtrader.simulation.daily_bday import DailyBusinessDaySimulationEngine
+from vmtrader.simulation.event import SimulationEvent
 
 
 @pytest.mark.parametrize(

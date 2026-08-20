@@ -24,7 +24,7 @@
 
 | # | 규칙 |
 | --- | --- |
-| 1 | **무의존 경량**: 게이트웨이는 pandas·qstrader·OTA를 import하지 않는다(`requests`+`sqlite3`만). 상주 RSS 상한 **80MiB** (NFR-10 — import 실측 26MiB의 3배 여유, **추정**이며 Phase 3에서 실측) |
+| 1 | **무의존 경량**: 게이트웨이는 pandas·vmtrader·OTA를 import하지 않는다(`requests`+`sqlite3`만). 상주 RSS 상한 **80MiB** (NFR-10 — import 실측 26MiB의 3배 여유, **추정**이며 Phase 3에서 실측) |
 | 2 | **결합은 파일·DB뿐**: 원장 SQLite **읽기 전용**(URI `mode=ro`) + 킬스위치 **플래그 파일** 쓰기·삭제. IPC·소켓·공유 메모리 금지. 엔진 프로세스·`Portfolio`에 닿지 않으므로 NFR-8 스레드 경계가 적용될 일이 없다 |
 | 3 | **FR-19 킬스위치의 매체는 플래그 파일로 확정**: 게이트웨이(또는 운용자)가 쓰고, 엔진 가드(`broker/kis/guards.py`)가 기동 초입·매 접수·매 폴링 반복에서 읽는다. 해제도 대칭(파일 삭제) |
 | 4 | **smtm 이식 범위**: `message_handler.py`의 수신 구조(long-polling·`chat_id` 필터·송신 워커)는 이식한다. 명령이 폴링 스레드에서 오퍼레이터 상태를 직접 만지는 배선(`telegram_controller.py:85-96`)은 **이식하지 않는다** — 게이트웨이의 명령 처리는 원장 읽기·플래그 쓰기·(선택) KIS 조회뿐이다 |
@@ -49,7 +49,7 @@
 
 ## 결과
 
-- 신규 모듈 `scripts/telegram_gateway.py` — qstrader 패키지 밖(설계 §3.2). NFR-10의 무의존은 `grep` import 경계 테스트로 강제한다.
+- 신규 모듈 `scripts/telegram_gateway.py` — vmtrader 패키지 밖(설계 §3.2). NFR-10의 무의존은 `grep` import 경계 테스트로 강제한다.
 - FR-19 킬스위치의 매체가 플래그 파일로 확정된다 — `guards.py`의 계약에 반영.
 - 계좌 현황은 실시간 인메모리가 아니라 원장 스냅샷이다 — cron 단발 모델에서는 장중 대부분 인메모리 상태 자체가 없으므로 이는 모델의 귀결이다.
 - 게이트웨이 크래시는 대화 불능일 뿐 트레이딩에 무영향 — systemd가 재기동한다. 엔진 크래시 의미론(FR-7)도 무변경.

@@ -5,7 +5,7 @@ import pytest
 import pytz
 
 
-from qstrader.portcon.order_sizer.dollar_weighted import (
+from vmtrader.portcon.order_sizer.dollar_weighted import (
     DollarWeightedCashBufferedOrderSizer
 )
 

@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.system.rebalance.end_of_month import EndOfMonthRebalance
+from vmtrader.system.rebalance.end_of_month import EndOfMonthRebalance
 
 
 @pytest.mark.parametrize(

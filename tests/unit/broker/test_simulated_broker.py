@@ -5,10 +5,10 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.broker.portfolio.portfolio import Portfolio
-from qstrader.broker.simulated_broker import SimulatedBroker
-from qstrader.broker.fee_model.zero_fee_model import ZeroFeeModel
-from qstrader import settings
+from vmtrader.broker.portfolio.portfolio import Portfolio
+from vmtrader.broker.simulated_broker import SimulatedBroker
+from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
+from vmtrader import settings
 
 
 class ExchangeMock:
@@ -140,7 +140,7 @@ def test_bad_set_base_currency():
 def test_good_set_base_currency():
     """
     Checks _set_base_currency sets the currency
-    correctly if it is supported by QSTrader.
+    correctly if it is supported by VMTrader.
     """
     start_dt = pd.Timestamp('2017-10-05 08:00:00', tz=pytz.UTC)
     exchange = ExchangeMock()

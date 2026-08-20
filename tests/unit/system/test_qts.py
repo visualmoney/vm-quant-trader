@@ -1,16 +1,16 @@
 from unittest.mock import Mock
 
-from qstrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
-from qstrader.execution.execution_algo.market_order import (
+from vmtrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
+from vmtrader.execution.execution_algo.market_order import (
     MarketOrderExecutionAlgorithm
 )
-from qstrader.portcon.optimiser.equal_weight import (
+from vmtrader.portcon.optimiser.equal_weight import (
     EqualWeightPortfolioOptimiser
 )
-from qstrader.portcon.optimiser.fixed_weight import (
+from vmtrader.portcon.optimiser.fixed_weight import (
     FixedWeightPortfolioOptimiser
 )
-from qstrader.system.qts import QuantTradingSystem
+from vmtrader.system.qts import QuantTradingSystem
 
 
 class NullExecutionAlgorithm(ExecutionAlgorithm):

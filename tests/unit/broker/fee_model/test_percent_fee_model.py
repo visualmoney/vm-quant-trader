@@ -1,6 +1,6 @@
 import pytest
 
-from qstrader.broker.fee_model.percent_fee_model import PercentFeeModel
+from vmtrader.broker.fee_model.percent_fee_model import PercentFeeModel
 
 
 class AssetMock:

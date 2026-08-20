@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.system.rebalance.buy_and_hold import BuyAndHoldRebalance
+from vmtrader.system.rebalance.buy_and_hold import BuyAndHoldRebalance
 
 
 @pytest.mark.parametrize(

@@ -5,13 +5,13 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.equity import Equity
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.data.backtest_data_handler import BacktestDataHandler
-from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
-from qstrader.data.daily_bar_memory import InMemoryDailyBarDataSource
-from qstrader.trading.backtest import BacktestTradingSession
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.equity import Equity
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.data.backtest_data_handler import BacktestDataHandler
+from vmtrader.data.daily_bar_csv import CSVDailyBarDataSource
+from vmtrader.data.daily_bar_memory import InMemoryDailyBarDataSource
+from vmtrader.trading.backtest import BacktestTradingSession
 
 
 # The CSV fixtures and the expected history are the ones the end-to-end

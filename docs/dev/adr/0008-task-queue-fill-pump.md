@@ -20,7 +20,7 @@ ADR-0006은 주문 접수와 체결 반영을 분리했다. 남은 물음은 **�
 
 ## 결정
 
-**정산 단계의 체결 폴링을 단일 FIFO 태스크 큐 워커 스레드에서 실행한다.** 모듈은 `qstrader/broker/kis/worker.py`(lab `FillPumpWorker` 이식 — ADR-0003과 정합).
+**정산 단계의 체결 폴링을 단일 FIFO 태스크 큐 워커 스레드에서 실행한다.** 모듈은 `vmtrader/broker/kis/worker.py`(lab `FillPumpWorker` 이식 — ADR-0003과 정합).
 
 | 항목 | 규칙 |
 | --- | --- |
