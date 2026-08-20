@@ -50,6 +50,13 @@ SETTLE_SECONDS = {'vps': 1.0, 'prod': 0.2}
 # real run while polling two orders.
 MIN_CALL_INTERVAL = {'vps': 0.7, 'prod': 0.15}
 
+# Shared by every gateway in the process, because the venue's limit is
+# too. A per-instance throttle spaces one object's calls and nothing
+# else: the smoke's safety stage builds three gateways and drew
+# EGW00201 between them even with the per-instance spacing in place.
+_CALL_LOCK = threading.Lock()
+_LAST_CALL_AT = None
+
 
 def env_dv_for(svr):
     """
@@ -282,8 +289,6 @@ class KisGateway:
         self.settle_seconds = settle_seconds
         self.sleep = sleep if sleep is not None else time.sleep
         self.min_call_interval = min_call_interval
-        self._call_lock = threading.Lock()
-        self._last_call_at = None
 
     @classmethod
     def connect(cls, svr='vps', ota_home=None, sleep=None):
@@ -333,23 +338,26 @@ class KisGateway:
 
         Two mechanisms, because they solve different problems. The
         SDK's own delay is per-server and lives inside the calling
-        thread. That orders nothing between threads, and the settle
-        phase polls from a worker while the main thread may also be
-        calling -- so a lock and a monotonic clock enforce a minimum
-        gap across all callers.
+        thread, which orders nothing between callers. A lock and a
+        monotonic clock enforce a minimum gap instead -- and that state
+        is module level, not per instance, because the venue counts
+        calls per account rather than per object.
 
-        This is the gateway thread safety NFR-8 required and the first
-        real run demanded: polling two orders produced EGW00201, the
-        per-second limit, on a paper account.
+        Both halves came from real runs. Polling two orders from the
+        settle worker drew EGW00201, the per-second limit, on a paper
+        account; adding per-instance spacing fixed that and left the
+        safety stage, which builds three gateways, still drawing it.
         """
-        with self._call_lock:
+        global _LAST_CALL_AT
+
+        with _CALL_LOCK:
             if self.min_call_interval > 0.0:
                 now = time.monotonic()
-                if self._last_call_at is not None:
-                    waited = now - self._last_call_at
+                if _LAST_CALL_AT is not None:
+                    waited = now - _LAST_CALL_AT
                     if waited < self.min_call_interval:
                         self.sleep(self.min_call_interval - waited)
-                self._last_call_at = time.monotonic()
+                _LAST_CALL_AT = time.monotonic()
             self.auth.smart_sleep()
 
     # -- BrokerClient Protocol -------------------------------------------
