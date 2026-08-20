@@ -438,6 +438,8 @@ sequenceDiagram
 
 **여기까지면 무엇이 동작하는가**: 아직 주문은 못 낸다. 그러나 **KIS 응답을 값으로 바꾸고, 한국식 비용을 계산하고, 장중 여부를 판정할 수 있다.** KRW 백테스트가 실행 가능해진다 — 한국 종목 CSV로 매도세를 반영한 백테스트를 돌릴 수 있고, 이것만으로도 독립적 가치가 있다. ADR-0004의 파괴적 변경도 이 단계에서 격리 검증된다.
 
+**상태: 완료 (2026-08-20).** 산출물 전건과 단위 테스트가 들어왔다 — `broker/kis/client.py`(Protocol·`OrderReport`·`Holding`·`AccountBalance`), `broker/kis/parse.py`, `broker/fee_model/korea_fee_model.py`, `exchange/krx_exchange.py`, `settings.py`의 `KRW`, `broker.py`의 `update(dt)` 추상 승격, 그리고 Q5 부호 규약 수정. 전체 스위트 **290건 → 358건 통과**(신규 68건), 백테스트 결과 불변(NFR-4). `SimulatedBroker`에 `KoreaStockFeeModel`을 물려 매수 1,065원 / 매도 13,845원(동일 규모)의 비대칭을 실측했다.
+
 ### Phase 2 — 브로커 구현 (가짜 클라이언트로 완주)
 
 | 산출물 | 내용 |
@@ -716,7 +718,7 @@ flowchart LR
 | Q2 | KIS가 주문 단위 실수수료를 응답하는가? — **부분 해소 (2026-08-19)**: `inquire_daily_ccld` output2에 `prsm_tlex_smtl`(추정제비용합계)이 있다. 실측이 아니라 추정이므로 근사 전제는 유지 | 요율 계산 대신 KIS 추정치를 쓸지 Phase 2에서 결정 | Phase 3 스모크(실측 대조) |
 | Q3 | 신호용 과거 시세를 어디서 얻는가? KIS 일봉 API인가, 기존 CSV인가? | 라이브에서도 `SMASignal` 등이 동작하려면 과거 데이터가 필요하다. 본 설계는 **시세(마크)만** 다루고 신호용 시계열은 미해결 | Phase 3 |
 | Q4 | `ExecutionHandler:86`의 주문당 `update(dt)` 호출을 라이브에서 어떻게 억제할 것인가? 스로틀인가, `ExecutionHandler` 수정인가? | ADR-0002의 트레이드오프. API 호출 낭비 | Phase 2 |
-| Q5 | 사이저의 `_estimate_trade_costs`가 부호를 잃는 문제(`long_short.py:145`)를 어떻게 고칠 것인가? | ADR-0005의 유일한 코어 침습. 백테스트 결과에 영향 → NFR-4와 충돌 가능 | Phase 1 |
+| Q5 | ~~사이저의 `_estimate_trade_costs`가 부호를 잃는 문제를 어떻게 고칠 것인가?~~ **해소 (2026-08-20, 구현됨)** — 델타를 `abs()`로 뭉개는 대신 **부호를 보존해** `calc_total_cost(asset, ±quantity, ±consideration)`으로 넘긴다. 브로커가 이미 부호 있는 인자로 호출하므로(`broker/simulated_broker.py:574-582`) 이는 규약 통일이다 | **NFR-4 무영향 확인** — 기존 `FeeModel`은 전부 `abs(consideration)`을 쓰므로 금액이 불변이고, 전체 스위트 통과 | 해소 |
 | Q6 | 다중 프로세스/다중 전략이 같은 계좌를 쓸 때의 격리 | 현재 설계는 단일 프로세스·단일 전략 전제. lab은 `GroupCap`·`strategy` 귀속으로 해결했으나 본안 비범위 | 후속 |
 | Q7 | 미체결 잔량의 취소·재시도 | 현재는 STALE로 두고 다음 리밸런싱이 흡수. 슬리피지 누적 시 재검토 | 후속 |
 | Q8 | 실전(`prod`) 승격 기준 | A-1~A-5는 모의투자까지만 요구한다. 실전 전환 체크리스트가 별도로 필요 | 후속 |

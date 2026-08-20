@@ -1,6 +1,6 @@
 SUPPORTED = {
     'CURRENCIES': [
-        'USD', 'GBP', 'EUR'
+        'USD', 'GBP', 'EUR', 'KRW'
     ],
     'FEE_MODEL': {
         'ZeroFeeModel': 'vmtrader.broker.fee_model.zero_fee_model'

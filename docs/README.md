@@ -30,8 +30,8 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0001](dev/adr/0001-portfolio-source-of-truth.md) | 제안됨 | 라이브 회계의 진실원본은 로컬 `Portfolio`, 브로커 잔고가 이를 정정한다 |
 | [0002](dev/adr/0002-blocking-fill-polling.md) | **폐기됨** | ~~체결 폴링은 `submit_order()` 안에서 블로킹한다~~ — [0006](dev/adr/0006-decouple-submit-from-fill.md)이 대체 |
 | [0003](dev/adr/0003-port-lab-code.md) | 제안됨 | `vm-quant-lab` 코드는 의존이 아니라 이식한다 |
-| [0004](dev/adr/0004-promote-update-to-abc.md) | 제안됨 | `update(dt)`를 `Broker` ABC의 추상 메서드로 승격한다 (**파괴적 변경**) |
-| [0005](dev/adr/0005-sell-side-transaction-tax.md) | 제안됨 | 매도 전용 증권거래세는 `quantity` 부호로 판정한다 |
+| [0004](dev/adr/0004-promote-update-to-abc.md) | **채택됨** | `update(dt)`를 `Broker` ABC의 추상 메서드로 승격한다 (**파괴적 변경**) |
+| [0005](dev/adr/0005-sell-side-transaction-tax.md) | **채택됨** | 매도 전용 증권거래세는 `quantity` 부호로 판정한다 |
 | [0006](dev/adr/0006-decouple-submit-from-fill.md) | 제안됨 | 주문 접수와 체결 반영을 분리한다 — `submit_order()`는 접수만, 정산 단계가 시간 예산 안에서 체결을 수집한다 (0002 대체) |
 | [0007](dev/adr/0007-engine-clock-timestamps.md) | 제안됨 | 엔진 회계의 타임스탬프는 단조 증가하는 엔진 시계를 쓴다 — 브로커 체결시각은 원장에만 기록한다 |
 | [0008](dev/adr/0008-task-queue-fill-pump.md) | 제안됨 | 체결 수집의 실행 기반으로 단일 FIFO 태스크 큐 워커(smtm `worker.py` 이식)를 채택한다 — `Portfolio` 변경은 메인 스레드 전용 |

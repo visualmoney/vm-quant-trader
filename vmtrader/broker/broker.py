@@ -229,3 +229,24 @@ class Broker(ABC):
         raise NotImplementedError(
             "Should implement submit_order()"
         )
+
+    @abstractmethod
+    def update(self, dt):
+        """
+        Advance the broker to the provided timestamp.
+
+        Callers rely on this after submitting orders and on every event
+        of the trading session, so a Broker that omits it fails at run
+        time rather than at instantiation. What the method does is
+        implementation specific: a simulated broker executes its queued
+        orders, whereas a live broker polls for fills, marks positions
+        to market and reconciles against the venue.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The timestamp to advance the broker to.
+        """
+        raise NotImplementedError(
+            "Should implement update()"
+        )
