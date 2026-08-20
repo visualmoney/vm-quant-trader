@@ -22,10 +22,11 @@
 | --- | --- | --- |
 | KIS 모의투자 계좌 | 앱키·앱시크릿·계좌번호 | KIS 개발자센터에서 발급 |
 | OTA 클론 | `koreainvestment/open-trading-api` 저장소 클론. **PyPI 패키지가 아니다** | `export OTA_HOME=~/github.com/open-trading-api` |
+| OTA 런타임 의존 | `PyYAML` · `requests` · `pycryptodome` · `websockets`. 이 저장소는 OTA에 의존하지 않으므로 **운용 환경이 직접 설치**해야 한다 | `uv pip install PyYAML requests pycryptodome websockets` |
 | OTA 인증 설정 | OTA가 요구하는 `kis_devlp.yaml`에 앱키·계좌 기입 | OTA 문서 참조 |
 | 파이썬 | 3.10 이상 | 이 저장소는 uv로 관리한다 |
 
-**앱키는 저장소에 커밋하지 않는다.** OTA 설정 파일은 저장소 밖에 두고 권한을 `600`으로 둔다.
+**앱키는 저장소에 커밋하지 않는다.** OTA가 실제로 읽는 자격증명 파일은 **`~/KIS/config/kis_devlp.yaml`**이다(`kis_auth.py`의 `config_root`가 이 경로를 하드코딩한다). 클론 루트에도 같은 이름의 파일이 있지만 그것은 **git 추적 중인 템플릿**이므로 채우지 않는다 — 공개 포크에 시크릿이 올라간다. 실제 파일은 권한 `600`으로 둔다.
 
 ---
 

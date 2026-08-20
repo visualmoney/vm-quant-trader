@@ -153,13 +153,29 @@ def _rows(frame):
     return list(frame)
 
 
+# The clone carries the same endpoints twice. 'examples_user' has one
+# aggregate module per asset class, which is what this gateway imports;
+# 'examples_llm' splits the same endpoints one module per API. Both
+# ship a 'kis_auth', and both read credentials from ~/KIS/config, so
+# either authenticates -- but only the aggregate tree offers the
+# 'domestic_stock_functions' module, so its directories go on the path
+# first.
+OTA_PATH_CANDIDATES = (
+    'examples_user',
+    os.path.join('examples_user', 'domestic_stock'),
+    'examples_llm',
+)
+
+
 def add_ota_to_path(ota_home=None):
     """
     Put the SDK clone on the import path.
 
     The SDK is a cloned repository of example scripts rather than a
     published package, so there is nothing to declare as a dependency
-    and nothing to install.
+    and nothing to install. Its own runtime requirements -- PyYAML,
+    requests, pycryptodome, websockets -- are the operator's to
+    provide, since this repository does not depend on the SDK at all.
 
     Parameters
     ----------
@@ -183,9 +199,21 @@ def add_ota_to_path(ota_home=None):
             "No KIS SDK clone at '%s'. Clone koreainvestment/"
             "open-trading-api and point OTA_HOME at it." % home
         )
-    for sub in (home, os.path.join(home, 'examples_llm')):
-        if os.path.isdir(sub) and sub not in sys.path:
-            sys.path.append(sub)
+
+    added = []
+    for candidate in OTA_PATH_CANDIDATES:
+        sub = os.path.join(home, candidate)
+        if os.path.isdir(sub):
+            if sub not in sys.path:
+                sys.path.insert(0, sub)
+            added.append(sub)
+
+    if not added:
+        raise FileNotFoundError(
+            "The clone at '%s' has none of the expected layouts (%s). It "
+            "may be a partial checkout."
+            % (home, ', '.join(OTA_PATH_CANDIDATES))
+        )
     return home
 
 

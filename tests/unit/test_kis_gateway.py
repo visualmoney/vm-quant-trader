@@ -421,3 +421,47 @@ def test_bars_outside_the_requested_range_are_dropped():
     closes = gw.get_daily_closes('EQ:005930', '20260815', '20260820')
 
     assert all('20260815' <= date <= '20260820' for date, _ in closes)
+
+
+def test_the_aggregate_module_directory_goes_on_the_path(tmp_path):
+    """
+    Tests that the directory holding 'domestic_stock_functions' is
+    added, not merely the clone root.
+
+    The clone ships the same endpoints twice: 'examples_user' has one
+    aggregate module per asset class, and 'examples_llm' splits them
+    one module per API. Only the first offers the module this gateway
+    imports, and adding just the root or just examples_llm leaves it
+    unimportable — which is how this was found, on a real clone.
+    """
+    home = tmp_path / 'open-trading-api'
+    (home / 'examples_user' / 'domestic_stock').mkdir(parents=True)
+    (home / 'examples_llm').mkdir()
+
+    before = list(sys.path)
+    try:
+        gateway.add_ota_to_path(str(home))
+        assert str(home / 'examples_user') in sys.path
+        assert str(home / 'examples_user' / 'domestic_stock') in sys.path
+        assert str(home / 'examples_llm') in sys.path
+    finally:
+        sys.path[:] = before
+
+
+def test_a_missing_clone_says_so(tmp_path):
+    """
+    Tests that a wrong OTA_HOME fails with an actionable message.
+    """
+    with pytest.raises(FileNotFoundError, match='Clone koreainvestment'):
+        gateway.add_ota_to_path(str(tmp_path / 'absent'))
+
+
+def test_a_clone_without_the_expected_layout_is_rejected(tmp_path):
+    """
+    Tests that a partial checkout is caught at path setup rather than
+    at the first import.
+    """
+    home = tmp_path / 'not-really-ota'
+    home.mkdir()
+    with pytest.raises(FileNotFoundError, match='expected layouts'):
+        gateway.add_ota_to_path(str(home))
