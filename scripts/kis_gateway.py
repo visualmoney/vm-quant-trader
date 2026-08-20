@@ -217,6 +217,18 @@ def add_ota_to_path(ota_home=None):
     return home
 
 
+class HolidayServiceUnavailable(RuntimeError):
+    """
+    Raised when the venue will not answer the holiday enquiry.
+
+    Observed on the paper server, which returns OPSQ0002 ('no such
+    service code') for this endpoint. The SDK prints the error and
+    hands back an empty frame, so an unavailable service and a date
+    with no data look identical from here -- hence one exception
+    covering both, with the likely cause in its message.
+    """
+
+
 class KisGateway:
     """
     Implements the BrokerClient Protocol against the KIS SDK.
@@ -548,7 +560,9 @@ class KisGateway:
         `Boolean`
             Whether the venue opens that day.
         """
-        from vmtrader.broker.kis.parse import parse_is_trading_day
+        from vmtrader.broker.kis.parse import (
+            KisParseError, parse_is_trading_day
+        )
 
         self._throttle()
         frame = call_with_retry(
@@ -556,7 +570,16 @@ class KisGateway:
             sleep=self.sleep,
             bass_dt=date_str
         )
-        return parse_is_trading_day(_rows(frame), date_str)
+        try:
+            return parse_is_trading_day(_rows(frame), date_str)
+        except KisParseError as err:
+            raise HolidayServiceUnavailable(
+                "KIS returned no holiday row for %s (%s). The paper server "
+                "does not offer this endpoint -- it answers OPSQ0002, 'no "
+                "such service code' -- so on vps the calendar must be "
+                "supplied to KrxExchange(holidays=...) instead of fetched."
+                % (date_str, err)
+            ) from err
 
     def _today(self):
         """

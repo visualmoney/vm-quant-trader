@@ -465,3 +465,35 @@ def test_a_clone_without_the_expected_layout_is_rejected(tmp_path):
     home.mkdir()
     with pytest.raises(FileNotFoundError, match='expected layouts'):
         gateway.add_ota_to_path(str(home))
+
+
+def test_an_unanswerable_holiday_enquiry_names_the_likely_cause():
+    """
+    Tests the error raised when the venue will not answer.
+
+    The paper server returns OPSQ0002, 'no such service code', for this
+    endpoint. The SDK prints that and hands back an empty frame, so an
+    unavailable service and a date with no data are indistinguishable
+    here — which is why the message says what to do rather than only
+    what happened.
+    """
+    functions = FakeFunctions(holiday_rows=[])
+    gw = _gateway(functions)
+
+    with pytest.raises(gateway.HolidayServiceUnavailable) as excinfo:
+        gw.get_trading_day('20260820')
+
+    message = str(excinfo.value)
+    assert 'paper server' in message
+    assert 'KrxExchange(holidays=' in message
+
+
+def test_an_answered_holiday_enquiry_still_works():
+    """
+    Tests that the new exception did not swallow the ordinary path.
+    """
+    functions = FakeFunctions(
+        holiday_rows=[{'bass_dt': '20260820', 'opnd_yn': 'Y'}]
+    )
+    gw = _gateway(functions)
+    assert gw.get_trading_day('20260820') is True

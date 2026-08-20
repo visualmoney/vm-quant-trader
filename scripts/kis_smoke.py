@@ -36,7 +36,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
 
-from kis_gateway import KisGateway  # noqa: E402
+from kis_gateway import (  # noqa: E402
+    HolidayServiceUnavailable, KisGateway
+)
 
 from vmtrader import settings  # noqa: E402
 from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel  # noqa: E402
@@ -185,8 +187,17 @@ def stage_connect(args):
         print('  mark %s = %.0f' % (symbol, data_handler.get_mark(symbol)))
 
     today = pd.Timestamp.now().strftime('%Y%m%d')
-    print('  venue says %s is a trading day: %s'
-          % (today, gateway.get_trading_day(today)))
+    holiday_source = 'venue'
+    try:
+        print('  venue says %s is a trading day: %s'
+              % (today, gateway.get_trading_day(today)))
+    except HolidayServiceUnavailable as err:
+        # A finding rather than a failure: the rest of the stage still
+        # tells us whether the plumbing works, and the calendar has an
+        # answer that does not involve the venue.
+        holiday_source = 'unavailable'
+        print('  FINDING: the venue will not answer the holiday enquiry.')
+        print('           %s' % err)
     print('  local calendar says market open now: %s'
           % broker.exchange.is_open_at_datetime(pd.Timestamp.now()))
 
@@ -199,7 +210,10 @@ def stage_connect(args):
     )
     print('  daily closes fetched for warm-up: %d row(s)' % len(closes))
 
-    return {'balance': balance, 'closes': len(closes)}
+    return {
+        'balance': balance, 'closes': len(closes),
+        'holiday_source': holiday_source
+    }
 
 
 def stage_rebalance(args):
