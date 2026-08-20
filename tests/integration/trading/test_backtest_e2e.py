@@ -267,3 +267,38 @@ def test_backtest_target_allocations(etf_filepath,):
     expected_ta = pd.DataFrame(data={'EQ:ABC': 0.6, 'EQ:DEF': 0.4}, index=pd.date_range("20190125", periods=5, freq='B'))
     actual_ta = target_allocations.tail()
     assert expected_ta.equals(actual_ta)
+
+
+def test_backtest_accepts_a_non_default_base_currency(capsys):
+    """
+    Tests that a backtest can be denominated in another currency.
+
+    KRW is supported by the broker, but the session had no way to ask
+    for it, so a backtest of Korean names reported won figures under a
+    dollar label.
+    """
+    settings.set_print_events(False)
+    try:
+        start_dt = pd.Timestamp('2015-11-06 14:30:00', tz=pytz.UTC)
+        end_dt = pd.Timestamp('2015-11-10 14:30:00', tz=pytz.UTC)
+
+        assets = ['EQ:GHI']
+        universe = StaticUniverse(assets)
+        alpha_model = FixedSignalsAlphaModel({'EQ:GHI': 1.0})
+
+        backtest = BacktestTradingSession(
+            start_dt,
+            end_dt,
+            universe,
+            alpha_model,
+            rebalance='buy_and_hold',
+            long_only=True,
+            base_currency='KRW',
+            cash_buffer_percentage=0.01,
+        )
+        backtest.run(results=False)
+
+        assert backtest.broker.base_currency == 'KRW'
+        assert 'KRW' in backtest.broker.get_account_cash_balance()
+    finally:
+        settings.set_print_events(True)

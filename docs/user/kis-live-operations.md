@@ -236,7 +236,20 @@ python scripts/promotion_check.py /home/ec2-user/data/vmtrader/ledger.db
 
 ---
 
-## 12. 아직 하지 않은 것
+## 12. 백테스트 데이터
+
+라이브 신호와 같은 출처(브로커)에서 받는다. 다른 벤더의 수정주가를 쓰면 두 평면의 신호가 전략과 무관한 이유로 갈린다.
+
+```bash
+python scripts/fetch_daily_bars.py 069500 148070 --years 4 --out ~/data/vmtrader/csv
+VMTRADER_CSV_DATA_DIR=~/data/vmtrader/csv python examples/sixty_forty_kr.py
+```
+
+**빈 응답은 재시도한다.** 거래소는 이력이 끝났을 때와 초당 한도에 걸렸을 때 **똑같이 빈 응답**을 준다. 재시도하지 않으면 4년치를 요청했는데 5개월치만 담긴 CSV가 조용히 만들어진다(2026-08-20 실측).
+
+---
+
+## 13. 아직 하지 않은 것
 
 - **실전(`prod`) 운용** — 인수 기준은 모의투자까지만 요구한다. 승격 기준은 §11.
 - **지정가·정정·취소 주문** — 시장가만 지원한다. 미체결은 취소 대신 시간 예산으로 다룬다.
