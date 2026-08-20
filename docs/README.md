@@ -2,11 +2,15 @@
 
 문서는 독자에 따라 두 갈래로 나뉜다.
 
-## `user/` — 전략 개발자용
+## `user/` — 전략 개발자·운용자용
 
-VMTrader를 **사용해** 전략을 만드는 사람을 위한 문서. 엔진 내부 구현을 몰라도 읽을 수 있어야 한다.
+VMTrader를 **사용해** 전략을 만들거나 실제로 굴리는 사람을 위한 문서. 엔진 내부 구현을 몰라도 읽을 수 있어야 한다.
 
 설치, 데이터 준비, 백테스트 조립, 알파모델 작성, 결과 해석, 자주 밟는 함정.
+
+| 문서 | 상태 | 요약 |
+| --- | --- | --- |
+| [kis-live-operations.md](user/kis-live-operations.md) | **모의투자 기준** | KIS 라이브 운용 — cron 두 줄, 휴장일 캐시, 킬스위치, 실행 후 확인 항목, 대조가 거래를 멈췄을 때의 조치 |
 
 ## `dev/` — 엔진 기여자용
 
@@ -35,7 +39,7 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0006](dev/adr/0006-decouple-submit-from-fill.md) | **채택됨** | 주문 접수와 체결 반영을 분리한다 — `submit_order()`는 접수만, 정산 단계가 시간 예산 안에서 체결을 수집한다 (0002 대체) |
 | [0007](dev/adr/0007-engine-clock-timestamps.md) | **채택됨** | 엔진 회계의 타임스탬프는 단조 증가하는 엔진 시계를 쓴다 — 브로커 체결시각은 원장에만 기록한다 |
 | [0008](dev/adr/0008-task-queue-fill-pump.md) | **채택됨** | 체결 수집의 실행 기반으로 단일 FIFO 태스크 큐 워커(smtm `worker.py` 이식)를 채택한다 — `Portfolio` 변경은 메인 스레드 전용 |
-| [0009](dev/adr/0009-cron-oneshot-live-session.md) | 제안됨 | `LiveTradingSession`은 상주 프로세스가 아니라 cron 단발이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 별도 기동이 기록한다 |
+| [0009](dev/adr/0009-cron-oneshot-live-session.md) | **채택됨** | `LiveTradingSession`은 상주 프로세스가 아니라 cron 단발이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 별도 기동이 기록한다 |
 | [0010](dev/adr/0010-telegram-gateway-plane.md) | 제안됨 | 대화형 운용(텔레그램 조회·킬스위치)은 분리 평면의 경량 게이트웨이 데몬이 제공한다 — 트레이딩 평면(0009 cron 단발)은 무변경 |
 | [0011](dev/adr/0011-package-rename-vmtrader.md) | **채택됨** | 패키지·배포명을 `qstrader`에서 `vmtrader`로 개명한다 — 업스트림은 휴면(45커밋 앞섬), 배포 메타데이터 정정과 함께 시행 |
 

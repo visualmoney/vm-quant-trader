@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현. [ADR-0006](0006-decouple-submit-from-fill.md)·[ADR-0008](0008-task-queue-fill-pump.md)을 **보강**한다 (대체 아님). [ADR-0010](0010-telegram-gateway-plane.md)이 본 결정을 보강한다 — 대화형 운용은 분리 평면이 흡수하며 본 결정은 무변경 |
+| 상태 | **채택됨 (Accepted)** — 구현됨 (2026-08-20, Phase 3). [ADR-0006](0006-decouple-submit-from-fill.md)·[ADR-0008](0008-task-queue-fill-pump.md)을 **보강**한다 (대체 아님). [ADR-0010](0010-telegram-gateway-plane.md)이 본 결정을 보강한다 — 대화형 운용은 분리 평면이 흡수하며 본 결정은 무변경 |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §2.4, §10.2-b, §11 Q10 |
 | 관련 요구 | FR-7·FR-17·FR-21·FR-23, NFR-9, C-15 ([spec/kis-broker.md](../spec/kis-broker.md)) |
