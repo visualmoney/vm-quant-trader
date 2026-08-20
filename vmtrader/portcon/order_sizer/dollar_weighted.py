@@ -135,6 +135,11 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
         happen and leaves the portfolio permanently under-invested by
         approximately the fee rate.
 
+        Quantity and consideration are passed signed -- negative for a
+        sell -- matching how the broker charges the fee on execution. A
+        fee model that treats the two sides differently, such as a
+        sell-side-only transaction tax, needs the sign to do so.
+
         Parameters
         ----------
         asset : `str`
@@ -151,8 +156,11 @@ class DollarWeightedCashBufferedOrderSizer(OrderSizer):
         `float`
             The estimated commission and tax for the trade.
         """
-        trade_dollars = abs(target_dollars - current_quantity * asset_price)
-        trade_quantity = int(np.floor(trade_dollars / asset_price))
+        trade_dollars = target_dollars - current_quantity * asset_price
+        direction = 1 if trade_dollars >= 0.0 else -1
+        trade_quantity = direction * int(
+            np.floor(abs(trade_dollars) / asset_price)
+        )
         return self.broker.fee_model.calc_total_cost(
             asset, trade_quantity, trade_dollars, broker=self.broker
         )

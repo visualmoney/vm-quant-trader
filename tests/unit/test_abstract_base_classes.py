@@ -180,3 +180,23 @@ def test_portfolio_optimiser_signature_matches_implementations():
     assert 'initial_weights' in base
     for cls in (EqualWeightPortfolioOptimiser, FixedWeightPortfolioOptimiser):
         assert inspect.signature(cls.__call__).parameters.keys() == base.keys()
+
+
+def test_broker_requires_update():
+    """
+    'update(dt)' is part of the Broker contract, not an informal
+    convention.
+
+    The execution handler calls it after every order and the trading
+    session calls it on every event, so a Broker that omits it used to
+    instantiate cleanly and then fail with AttributeError partway
+    through a session. Making it abstract moves that failure to
+    construction, where a live broker cannot take it into the market.
+    """
+    assert 'update' in Broker.__abstractmethods__
+
+    class BrokerWithoutUpdate(Broker):
+        pass
+
+    with pytest.raises(TypeError, match='update'):
+        BrokerWithoutUpdate()

@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현 |
+| 상태 | **채택됨 (Accepted)** — 구현됨 (2026-08-20, Phase 1). 사이저의 부호 보존은 설계안 §11 Q5 참조 |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §2.6 |
 | 관련 요구 | FR-13, C-9, NFR-4 ([spec/kis-broker.md](../spec/kis-broker.md)) |
