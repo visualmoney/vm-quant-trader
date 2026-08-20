@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현. [ADR-0006](0006-decouple-submit-from-fill.md)을 **보강**한다 (대체 아님) |
+| 상태 | **채택됨 (Accepted)** — 구현됨 (2026-08-20, Phase 2). [ADR-0006](0006-decouple-submit-from-fill.md)을 **보강**한다 (대체 아님) |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §10.3, §10.6 |
 | 관련 요구 | FR-24, NFR-8, FR-19·FR-23 ([spec/kis-broker.md](../spec/kis-broker.md)) |

@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현. [ADR-0002](0002-blocking-fill-polling.md)를 **대체** |
+| 상태 | **채택됨 (Accepted)** — 구현됨 (2026-08-20, Phase 2). [ADR-0002](0002-blocking-fill-polling.md)를 **대체** |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §10.1~10.4 |
 | 관련 요구 | FR-3·FR-19·FR-23, NFR-7 ([spec/kis-broker.md](../spec/kis-broker.md)) |
