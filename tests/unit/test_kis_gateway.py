@@ -499,6 +499,36 @@ def test_an_answered_holiday_enquiry_still_works():
     assert gw.get_trading_day('20260820') is True
 
 
+def test_calls_are_spaced_across_gateway_instances():
+    """
+    Tests that the spacing is per process, not per object.
+
+    The venue counts calls against the account, so two gateways in one
+    process share its budget. The smoke's safety stage builds three,
+    and drew EGW00201 between them while the throttle state still lived
+    on the instance.
+    """
+    gateway._LAST_CALL_AT = None
+    slept = []
+    first = gateway.KisGateway(
+        env_dv='demo', cano='1', acnt_prdt_cd='01',
+        functions=FakeFunctions(price_rows=[{'stck_prpr': '71000'}]),
+        auth=FakeAuth(), sleep=slept.append, min_call_interval=0.7
+    )
+    second = gateway.KisGateway(
+        env_dv='demo', cano='1', acnt_prdt_cd='01',
+        functions=FakeFunctions(price_rows=[{'stck_prpr': '71000'}]),
+        auth=FakeAuth(), sleep=slept.append, min_call_interval=0.7
+    )
+
+    first.get_price('EQ:005930')
+    second.get_price('EQ:005930')
+
+    # The second gateway waits for the first gateway's call.
+    assert len(slept) == 1
+    gateway._LAST_CALL_AT = None
+
+
 def test_calls_are_spaced_across_threads():
     """
     Tests the throttle NFR-8 required and a real run demanded.
@@ -511,6 +541,7 @@ def test_calls_are_spaced_across_threads():
     """
     import threading
 
+    gateway._LAST_CALL_AT = None
     functions = FakeFunctions(price_rows=[{'stck_prpr': '71000'}])
     slept = []
     gw = gateway.KisGateway(
@@ -531,6 +562,7 @@ def test_calls_are_spaced_across_threads():
     # The first call goes straight through; the rest wait.
     assert len(slept) == 2
     assert all(0.0 < delay <= 0.7 for delay in slept)
+    gateway._LAST_CALL_AT = None
 
 
 def test_spacing_is_disabled_by_default_for_injected_gateways():
