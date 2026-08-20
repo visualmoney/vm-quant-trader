@@ -35,7 +35,7 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 
 | 문서 | 상태 | 요약 |
 | --- | --- | --- |
-| [kis-broker.md](dev/spec/kis-broker.md) | **초안 · 미구현** | 한국투자증권 라이브 브로커 연동 요구사항 — 범위/비범위, 기능요구 25건(FR), 비기능요구 10건(NFR), 제약 15건(C), 인수기준 5건(A) |
+| [kis-broker.md](dev/spec/kis-broker.md) | **초안 · 미구현** | 한국투자증권 라이브 브로커 연동 요구사항 — 범위/비범위, 기능요구 26건(FR), 비기능요구 10건(NFR), 제약 15건(C), 인수기준 5건(A) |
 | [kis-broker-design.md](dev/spec/kis-broker-design.md) | **초안 · 미구현** | 위 스펙에 대한 설계안 — 라이브를 가로막는 현행 구조 7종, 신규 모듈 13개, 인터페이스 매핑, 실패 모드 17종, 시간 모델·비동기 체결 재검토(§10), 3단계 구현 계획 |
 
 ### `dev/adr/` — 설계 결정 기록
@@ -55,6 +55,7 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0009](dev/adr/0009-cron-oneshot-live-session.md) | **채택됨** | `LiveTradingSession`은 상주 프로세스가 아니라 cron 단발이다 — 기동 1회 = 사이클 1회, 자본곡선은 장 마감 후 별도 기동이 기록한다 |
 | [0010](dev/adr/0010-telegram-gateway-plane.md) | 제안됨 | 대화형 운용(텔레그램 조회·킬스위치)은 분리 평면의 경량 게이트웨이 데몬이 제공한다 — 트레이딩 평면(0009 cron 단발)은 무변경 |
 | [0011](dev/adr/0011-package-rename-vmtrader.md) | **채택됨** | 패키지·배포명을 `qstrader`에서 `vmtrader`로 개명한다 — 업스트림은 휴면(45커밋 앞섬), 배포 메타데이터 정정과 함께 시행 |
+| [0012](dev/adr/0012-signal-history-from-venue.md) | **채택됨** | 신호용 과거 시세는 브로커 일봉 API에서 받고, cron 단발이라 **매 기동마다 신호 버퍼를 워밍업**한다 |
 
 ### `dev/reports/` — 시점별 조사 보고서
 

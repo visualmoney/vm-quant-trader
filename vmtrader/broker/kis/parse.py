@@ -344,3 +344,36 @@ def parse_is_trading_day(rows, date_str):
     raise KisParseError(
         "KIS returned no holiday row for date '%s'." % date_str
     )
+
+
+def parse_daily_closes(rows):
+    """
+    Build a sorted series of daily closes from a chart response.
+
+    Rows without a usable close are dropped rather than carried as
+    zeros: a signal fed a zero reads it as a total loss, which is a
+    worse answer than a shorter history.
+
+    Parameters
+    ----------
+    rows : `list[dict]`
+        The 'inquire_daily_itemchartprice' output2 rows.
+
+    Returns
+    -------
+    `list[tuple[str, float]]`
+        (date, close) pairs, oldest first, deduplicated by date.
+    """
+    closes = {}
+    for row in rows or []:
+        date = str(row.get('stck_bsop_date', '')).strip()
+        if not date:
+            continue
+        try:
+            close = parse_float(row, 'stck_clpr')
+        except KisParseError:
+            continue
+        if close <= 0.0:
+            continue
+        closes[date] = close
+    return [(date, closes[date]) for date in sorted(closes)]

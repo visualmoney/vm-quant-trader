@@ -122,6 +122,68 @@ class LiveDataHandler:
         price = self.get_mark(asset_symbol)
         return (price, price)
 
+    def get_assets_historical_range_close_price(
+        self, start_dt, end_dt, asset_symbols, adjusted=True
+    ):
+        """
+        Return daily closes for several assets over a range.
+
+        Deliberately the same method name and shape that
+        BacktestDataHandler exposes, so anything that warms a signal
+        works identically against either plane. A live session that
+        primed its buffers from a different source than the backtest
+        would produce different signals from the same strategy, which
+        is the whole thing this integration exists to avoid.
+
+        Corporate actions are adjusted for by default. An unadjusted
+        split reads to a moving average as a fifty per cent crash.
+
+        Parameters
+        ----------
+        start_dt : `pd.Timestamp`
+            Inclusive start of the range.
+        end_dt : `pd.Timestamp`
+            Inclusive end of the range.
+        asset_symbols : `list[str]`
+            The engine symbols to fetch.
+        adjusted : `Boolean`, optional
+            Whether to adjust for corporate actions.
+
+        Returns
+        -------
+        `pd.DataFrame`
+            Closes indexed by date, one column per asset. Assets the
+            venue will not price are omitted rather than returned as
+            an all-empty column.
+        """
+        import pandas as pd
+
+        start = pd.Timestamp(start_dt).strftime('%Y%m%d')
+        end = pd.Timestamp(end_dt).strftime('%Y%m%d')
+
+        series = {}
+        for symbol in asset_symbols:
+            try:
+                closes = self.client.get_daily_closes(
+                    symbol, start, end, adjusted=adjusted
+                )
+            except Exception:
+                # A symbol the venue will not chart is left out. The
+                # caller sees a missing column, which is honest, rather
+                # than a column of zeros, which is not.
+                continue
+            if not closes:
+                continue
+            series[symbol] = pd.Series(
+                dict(
+                    (pd.Timestamp(date), close) for date, close in closes
+                )
+            )
+
+        if not series:
+            return pd.DataFrame()
+        return pd.DataFrame(series).sort_index()
+
     def get_asset_latest_mid_price(self, dt, asset_symbol):
         """
         Return the latest mid price of an asset.

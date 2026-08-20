@@ -238,3 +238,120 @@ def test_reconciliation_halt_stops_the_rebalance(tmp_path):
     assert 'reconciliation' in outcome['reason']
     assert qts.calls == []
     assert venue.placed == []
+
+
+class HistoryVenue(StubVenue):
+    """
+    A venue that also serves daily closes.
+    """
+
+    def __init__(self, closes=None, **kwargs):
+        super().__init__(**kwargs)
+        self.closes = closes
+        self.chart_calls = []
+
+    def get_daily_closes(self, symbol, start_date, end_date, adjusted=True):
+        self.chart_calls.append((symbol, start_date, end_date, adjusted))
+        if self.closes is None:
+            return []
+        return self.closes
+
+
+def _signals(assets, lookback=5):
+    """
+    Build a signals collection over the given assets.
+    """
+    from vmtrader.asset.universe.static import StaticUniverse
+    from vmtrader.signals.signals_collection import SignalsCollection
+    from vmtrader.signals.sma import SMASignal
+
+    universe = StaticUniverse(list(assets))
+    sma = SMASignal(pd.Timestamp('2026-08-20'), universe, [lookback])
+    return SignalsCollection({'sma': sma}, None)
+
+
+def test_signals_are_warmed_on_every_launch(tmp_path):
+    """
+    Tests that a cron one-shot primes its buffers before sizing.
+
+    Every launch starts with empty buffers, so without this a moving
+    average would be computed from one day's price, every day.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    closes = [
+        ('2026081%d' % day, 70000.0 + day * 100) for day in range(1, 10)
+    ]
+    venue = HistoryVenue(closes=closes)
+    broker = KisBroker(
+        start_dt=now,
+        exchange=KrxExchange(),
+        data_handler=LiveDataHandler(venue),
+        client=venue,
+        ledger=OrderLedger(str(tmp_path / 'live.db')),
+        clock=lambda: now
+    )
+    signals = _signals(['EQ:005930'])
+    session = LiveTradingSession(
+        broker, RecordingSystem(), signals=signals, clock=lambda: now
+    )
+
+    outcome = session.run_rebalance()
+
+    assert outcome['traded'] is True
+    assert outcome['signals_warmed'] == {'EQ:005930': 5}
+    assert venue.chart_calls != []
+    assert signals['sma']('EQ:005930', 5) > 0.0
+
+
+def test_a_starved_signal_stops_the_rebalance(tmp_path):
+    """
+    Tests that trading is refused when history is missing.
+
+    A signal with no history still returns a number, and sizing on it
+    is worse than skipping a day.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    venue = HistoryVenue(closes=[])
+    broker = KisBroker(
+        start_dt=now,
+        exchange=KrxExchange(),
+        data_handler=LiveDataHandler(venue),
+        client=venue,
+        ledger=OrderLedger(str(tmp_path / 'live.db')),
+        clock=lambda: now
+    )
+    qts = RecordingSystem()
+    session = LiveTradingSession(
+        broker, qts, signals=_signals(['EQ:005930']), clock=lambda: now
+    )
+
+    outcome = session.run_rebalance()
+
+    assert outcome['traded'] is False
+    assert 'no signal history' in outcome['reason']
+    assert qts.calls == []
+    assert venue.placed == []
+
+
+def test_a_session_without_signals_does_not_ask_for_history(tmp_path):
+    """
+    Tests that a fixed-weight strategy costs no extra venue calls.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    venue = HistoryVenue()
+    broker = KisBroker(
+        start_dt=now,
+        exchange=KrxExchange(),
+        data_handler=LiveDataHandler(venue),
+        client=venue,
+        ledger=OrderLedger(str(tmp_path / 'live.db')),
+        clock=lambda: now
+    )
+    session = LiveTradingSession(
+        broker, RecordingSystem(), clock=lambda: now
+    )
+
+    outcome = session.run_rebalance()
+
+    assert outcome['traded'] is True
+    assert venue.chart_calls == []
