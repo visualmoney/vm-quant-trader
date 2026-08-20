@@ -57,6 +57,11 @@ class BacktestTradingSession(TradingSession):
     long_only : `Boolean`, optional
         Whether to invoke the long only order sizer or allow
         long/short leveraged portfolios. Defaults to long/short leveraged.
+    base_currency : `str`, optional
+        The account currency, which must appear in
+        'settings.SUPPORTED'. Defaults to USD. A backtest of Korean
+        names is denominated in won, and reporting it as dollars would
+        mislabel every figure in the tearsheet.
     fee_model : `FeeModel` class instance, optional
         The optional FeeModel derived subclass to use for transaction cost estimates.
     optimiser : `PortfolioOptimiser`, optional
@@ -84,6 +89,7 @@ class BacktestTradingSession(TradingSession):
         portfolio_id=DEFAULT_PORTFOLIO_ID,
         portfolio_name=DEFAULT_PORTFOLIO_NAME,
         long_only=False,
+        base_currency='USD',
         fee_model=ZeroFeeModel(),
         burn_in_dt=None,
         data_handler=None,
@@ -103,6 +109,7 @@ class BacktestTradingSession(TradingSession):
         self.portfolio_id = portfolio_id
         self.portfolio_name = portfolio_name
         self.long_only = long_only
+        self.base_currency = base_currency
         self.fee_model = fee_model
         self.burn_in_dt = burn_in_dt
         self.optimiser = optimiser
@@ -223,6 +230,7 @@ class BacktestTradingSession(TradingSession):
             self.exchange,
             self.data_handler,
             account_id=self.account_name,
+            base_currency=self.base_currency,
             initial_funds=self.initial_cash,
             fee_model=self.fee_model
         )
