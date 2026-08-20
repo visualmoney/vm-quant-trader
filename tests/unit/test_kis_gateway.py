@@ -295,3 +295,129 @@ def test_the_engine_does_not_import_the_gateway():
         capture_output=True, text=True
     )
     assert result.stdout == ''
+
+
+class ChartFunctions(FakeFunctions):
+    """
+    Stands in for the SDK's chart endpoint, serving pages of bars.
+    """
+
+    def __init__(self, pages):
+        super().__init__()
+        self.pages = list(pages)
+        self.chart_calls = []
+
+    def inquire_daily_itemchartprice(self, **kwargs):
+        self.chart_calls.append(kwargs)
+        if not self.pages:
+            return ([], [])
+        return ([], self.pages.pop(0))
+
+
+def _bars(end_date, count, base=70000.0):
+    """
+    Build a page of chart rows ending on a date, newest first as the
+    venue returns them.
+    """
+    import datetime
+    end = datetime.datetime.strptime(end_date, '%Y%m%d')
+    return [
+        {
+            'stck_bsop_date': (
+                end - datetime.timedelta(days=offset)
+            ).strftime('%Y%m%d'),
+            'stck_clpr': str(base + offset)
+        }
+        for offset in range(count)
+    ]
+
+
+def test_daily_closes_are_returned_oldest_first():
+    """
+    Tests that the venue's newest-first page becomes an ascending
+    series, since a signal buffer is filled in time order.
+    """
+    functions = ChartFunctions([_bars('20260820', 5)])
+    gw = _gateway(functions)
+
+    closes = gw.get_daily_closes('EQ:005930', '20260801', '20260820')
+
+    dates = [date for date, _ in closes]
+    assert dates == sorted(dates)
+    assert len(closes) == 5
+
+
+def test_a_short_page_ends_the_paging():
+    """
+    Tests that a page smaller than the limit stops the walk, since
+    there is nothing older to find.
+    """
+    functions = ChartFunctions([_bars('20260820', 5), _bars('20260810', 5)])
+    gw = _gateway(functions)
+
+    gw.get_daily_closes('EQ:005930', '20260801', '20260820')
+
+    assert len(functions.chart_calls) == 1
+
+
+def test_a_full_page_is_followed_by_another_request():
+    """
+    Tests that a lookback longer than one page keeps asking.
+
+    The venue serves at most a hundred bars per call, so a
+    two-hundred-day lookback needs more than one.
+    """
+    functions = ChartFunctions([
+        _bars('20260831', gateway.CHART_PAGE_SIZE),
+        _bars('20260521', 20, base=60000.0),
+    ])
+    gw = _gateway(functions)
+
+    gw.get_daily_closes('EQ:005930', '20260101', '20260831')
+
+    assert len(functions.chart_calls) == 2
+    # The second request ends the day before the first page's oldest bar.
+    assert functions.chart_calls[1]['fid_input_date_2'] < (
+        functions.chart_calls[0]['fid_input_date_2']
+    )
+
+
+def test_adjusted_prices_are_requested_by_default():
+    """
+    Tests the adjustment flag, where 0 means adjusted.
+
+    An unadjusted split reads to a moving average as a crash.
+    """
+    functions = ChartFunctions([_bars('20260820', 5)])
+    gw = _gateway(functions)
+
+    gw.get_daily_closes('EQ:005930', '20260801', '20260820')
+    assert functions.chart_calls[0]['fid_org_adj_prc'] == '0'
+
+    functions.pages = [_bars('20260820', 5)]
+    gw.get_daily_closes('EQ:005930', '20260801', '20260820', adjusted=False)
+    assert functions.chart_calls[1]['fid_org_adj_prc'] == '1'
+
+
+def test_the_symbol_is_translated_for_the_chart_endpoint():
+    """
+    Tests that the engine symbol becomes a product code.
+    """
+    functions = ChartFunctions([_bars('20260820', 5)])
+    gw = _gateway(functions)
+
+    gw.get_daily_closes('EQ:005930', '20260801', '20260820')
+
+    assert functions.chart_calls[0]['fid_input_iscd'] == '005930'
+
+
+def test_bars_outside_the_requested_range_are_dropped():
+    """
+    Tests that paging cannot return more than was asked for.
+    """
+    functions = ChartFunctions([_bars('20260820', 10)])
+    gw = _gateway(functions)
+
+    closes = gw.get_daily_closes('EQ:005930', '20260815', '20260820')
+
+    assert all('20260815' <= date <= '20260820' for date, _ in closes)

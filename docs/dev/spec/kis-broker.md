@@ -78,6 +78,7 @@ VMTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클�
 | **FR-8** | 실행 중 브로커 잔고와 로컬 포지션이 불일치하면 **감지해 로그·보고**한다. 로컬이 실제보다 많이 보유했다고 믿는 경우(과대 계상)는 **매매를 중단**한다 | 불일치 fixture로 중단 여부 단언 |
 | **FR-9** | KRX 장운영시간·휴장일을 판정하는 `Exchange` 구현체를 제공한다. 장외 시각에는 주문을 접수하지 않는다 | 개장/폐장/주말/휴장일 경계 시각 파라미터화 테스트 |
 | **FR-10** | 사이징·평가에 쓰는 시세를 KIS에서 공급하는 `DataHandler`를 제공한다. 기존 `get_asset_latest_ask_price` / `get_asset_latest_bid_ask_price` / `get_asset_latest_mid_price` 시그니처를 유지한다 | 사이저·브로커가 수정 없이 동작하는 통합 테스트 |
+| **FR-26** | 신호용 **과거 종가**를 브로커에서 공급하고(`get_assets_historical_range_close_price` — `BacktestDataHandler`와 동일 계약), 라이브 세션은 **매 기동마다 신호 버퍼를 워밍업**한다. 수정주가를 기본으로 하며, 이력이 없는 종목이 있으면 그날은 거래하지 않는다 ([ADR-0012](../adr/0012-signal-history-from-venue.md)) | 워밍업한 신호값이 같은 가격을 순서대로 먹인 값과 일치함을 단언 + 이력 0일 때 무거래 단언 |
 | **FR-11** | 주문 수량은 **정수 주**다. 소수 수량은 절대값 기준 내림하고, 내림 결과 0주면 무주문 | 0.9주·1.4주·-1.4주 입력 테스트 |
 | **FR-12** | 계좌 기준통화는 **KRW**다. `SimulatedBroker._set_base_currency`가 참조하는 `settings.SUPPORTED['CURRENCIES']`(현재 `USD`/`GBP`/`EUR`, `settings.py:1-4`)에 KRW가 추가되어야 한다 | `base_currency="KRW"` 인스턴스화 성공 |
 | **FR-13** | 증권거래세는 **매도 시에만** 부과하는 `FeeModel`을 제공한다. 현행 `PercentFeeModel`은 매수·매도 구분 없이 tax를 부과한다(`percent_fee_model.py:47-68`) | 동일 수량 매수/매도 각 1건의 `calc_total_cost` 비대칭 단언 |

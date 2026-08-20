@@ -170,6 +170,36 @@ class BrokerClient(Protocol):
         """
         ...
 
+    def get_daily_closes(
+        self, symbol: str, start_date: str, end_date: str,
+        adjusted: bool = True
+    ) -> list:
+        """
+        Return daily closing prices over a date range.
+
+        Signals need history, and a live process has none: it starts
+        with empty rolling buffers every time it launches. This is how
+        they are filled.
+
+        Parameters
+        ----------
+        symbol : `str`
+            The engine symbol, e.g. 'EQ:005930'.
+        start_date : `str`
+            Inclusive start, as 'YYYYMMDD'.
+        end_date : `str`
+            Inclusive end, as 'YYYYMMDD'.
+        adjusted : `bool`, optional
+            Whether to adjust for corporate actions. Defaults to true,
+            since an unadjusted split looks like a crash to a signal.
+
+        Returns
+        -------
+        `list[tuple[str, float]]`
+            (date, close) pairs, oldest first.
+        """
+        ...
+
     def get_trading_day(self, date_str: str) -> bool:
         """
         Return whether the venue opens on the provided date.

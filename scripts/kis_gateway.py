@@ -33,6 +33,11 @@ MARKET_ORDER = '01'
 KRX = 'KRX'
 DEFAULT_OTA_HOME = '../open-trading-api'
 
+# The chart endpoint returns at most this many bars per call, so a
+# lookback longer than it takes more than one.
+CHART_PAGE_SIZE = 100
+MAX_CHART_PAGES = 10
+
 # Paper accounts are rate limited far more tightly than real ones, and
 # the venue rejects the order outright rather than queuing it.
 SETTLE_SECONDS = {'vps': 1.0, 'prod': 0.2}
@@ -426,6 +431,77 @@ class KisGateway:
                 'KIS returned no price for %s.' % symbol
             )
         return parse_price(rows[0])
+
+    def get_daily_closes(self, symbol, start_date, end_date, adjusted=True):
+        """
+        Return daily closes over a range, paging as needed.
+
+        The venue returns at most a hundred bars per call, so a
+        two-hundred-day lookback takes several. Paging walks backwards
+        from the end date because that is the direction the venue
+        indexes, and stops as soon as a page comes back short -- there
+        is no earlier data to find.
+
+        Parameters
+        ----------
+        symbol : `str`
+            The engine symbol.
+        start_date : `str`
+            Inclusive start, as 'YYYYMMDD'.
+        end_date : `str`
+            Inclusive end, as 'YYYYMMDD'.
+        adjusted : `Boolean`, optional
+            Whether to adjust for corporate actions. Defaults to true:
+            an unadjusted split reads to a signal as a crash.
+
+        Returns
+        -------
+        `list[tuple[str, float]]`
+            (date, close) pairs, oldest first.
+        """
+        import datetime
+
+        from vmtrader.broker.kis.parse import (
+            parse_daily_closes, to_venue_symbol
+        )
+
+        pdno = to_venue_symbol(symbol)
+        collected = {}
+        cursor = end_date
+
+        for _ in range(MAX_CHART_PAGES):
+            if cursor < start_date:
+                break
+            self._throttle()
+            frame = call_with_retry(
+                self.functions.inquire_daily_itemchartprice,
+                sleep=self.sleep,
+                env_dv=self.env_dv,
+                fid_cond_mrkt_div_code='J',
+                fid_input_iscd=pdno,
+                fid_input_date_1=start_date,
+                fid_input_date_2=cursor,
+                fid_period_div_code='D',
+                fid_org_adj_prc='0' if adjusted else '1'
+            )
+            output2 = frame[1] if isinstance(frame, tuple) else frame
+            page = parse_daily_closes(_rows(output2))
+            if not page:
+                break
+            collected.update(dict(page))
+            if len(page) < CHART_PAGE_SIZE:
+                # The venue had nothing older to give.
+                break
+            earliest = page[0][0]
+            cursor = (
+                datetime.datetime.strptime(earliest, '%Y%m%d')
+                - datetime.timedelta(days=1)
+            ).strftime('%Y%m%d')
+
+        return [
+            (date, collected[date]) for date in sorted(collected)
+            if start_date <= date <= end_date
+        ]
 
     def get_trading_day(self, date_str):
         """

@@ -18,6 +18,7 @@ import pandas as pd
 from vmtrader import settings
 from vmtrader.broker.kis.guards import KillSwitchEngaged
 from vmtrader.broker.kis.reconcile import reconcile
+from vmtrader.signals.warmup import warm_up_signals
 from vmtrader.trading.trading_session import TradingSession
 
 
@@ -31,6 +32,10 @@ class LiveTradingSession(TradingSession):
         The live broker.
     qts : `QuantTradingSystem`
         The same trading system a backtest uses, unmodified.
+    signals : `SignalsCollection`, optional
+        Signals to warm from history before sizing. A live process
+        holds no memory between launches, so without this a moving
+        average would be computed from a single day's price.
     rebalance_dates : `list[pd.Timestamp]`, optional
         The dates on which trading is due. Without them every open day
         is a rebalance day.
@@ -47,6 +52,7 @@ class LiveTradingSession(TradingSession):
         self,
         broker,
         qts,
+        signals=None,
         rebalance_dates=None,
         time_budget=None,
         close_buffer=None,
@@ -54,6 +60,7 @@ class LiveTradingSession(TradingSession):
     ):
         self.broker = broker
         self.qts = qts
+        self.signals = signals
         self.rebalance_dates = rebalance_dates
         self.time_budget = (
             time_budget if time_budget is not None
@@ -161,6 +168,25 @@ class LiveTradingSession(TradingSession):
             return outcome
 
         self.broker.update(now, force=True)
+
+        warmed = self._warm_up_signals(now)
+        if warmed is not None:
+            outcome['signals_warmed'] = warmed
+            if warmed and min(warmed.values()) == 0:
+                # A signal with no history returns a number computed
+                # from nothing. Sizing on it would be worse than not
+                # trading today.
+                starved = sorted(
+                    asset for asset, count in warmed.items() if count == 0
+                )
+                outcome['reason'] = (
+                    'no signal history for %s' % ', '.join(starved)
+                )
+                self._log(
+                    'Refusing to trade: %s' % outcome['reason']
+                )
+                return outcome
+
         self.qts(now)
         outcome['traded'] = True
 
@@ -168,6 +194,30 @@ class LiveTradingSession(TradingSession):
         self._log('Settling fills until %s.' % deadline)
         outcome['fills_booked'] = self.broker.settle(deadline)
         return outcome
+
+    def _warm_up_signals(self, now):
+        """
+        Fill the signal buffers from history, if there are signals.
+
+        Returns
+        -------
+        `dict{str: int}` or `None`
+            How many prices each asset was warmed with, or None when
+            the session has no signals to warm.
+        """
+        if self.signals is None:
+            return None
+        warmed = warm_up_signals(
+            self.signals, self.broker.data_handler, now
+        )
+        self._log(
+            'Warmed signals: %s'
+            % ', '.join(
+                '%s=%d' % (asset, count)
+                for asset, count in sorted(warmed.items())
+            )
+        )
+        return warmed
 
     def run_end_of_day(self):
         """
