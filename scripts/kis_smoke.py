@@ -146,7 +146,36 @@ def smoke_plan(symbols, budget, total_equity, holdings):
     return weights, cash_buffer, universe
 
 
-def build_stack(args, guard=None):
+def last_session_timestamp(now=None):
+    """
+    Return a timestamp inside a trading session, most recently past.
+
+    The safety stage needs one. Its checks live behind the market-hours
+    gate in 'submit_order', so running them after the close would have
+    every order refused for being out of hours -- the short check would
+    pass for the wrong reason and the kill switch would never fire at
+    all, reporting a failure that is really a scheduling artefact.
+
+    Parameters
+    ----------
+    now : `pd.Timestamp`, optional
+        The present. Defaults to the wall clock.
+
+    Returns
+    -------
+    `pd.Timestamp`
+        Midday on the most recent weekday, at which the market is open.
+    """
+    now = now if now is not None else pd.Timestamp.now()
+    day = now.normalize()
+    if now.time() < KrxExchange().open_time:
+        day = day - pd.Timedelta(days=1)
+    while day.weekday() > 4:
+        day = day - pd.Timedelta(days=1)
+    return day + pd.Timedelta(hours=12)
+
+
+def build_stack(args, guard=None, clock=None):
     """
     Authenticate and assemble the live stack against the paper server.
 
@@ -156,6 +185,10 @@ def build_stack(args, guard=None):
         Parsed command line.
     guard : `SafetyGuard`, optional
         Overrides the default guard, used by the safety stage.
+    clock : `callable`, optional
+        Overrides the engine clock. The broker starts at whatever this
+        returns, because its clock never runs backwards -- injecting a
+        time earlier than construction alone would be clamped away.
 
     Returns
     -------
@@ -174,8 +207,9 @@ def build_stack(args, guard=None):
     data_handler = LiveDataHandler(gateway)
     os.makedirs(os.path.dirname(args.ledger), exist_ok=True)
 
+    start_dt = clock() if clock is not None else pd.Timestamp.now()
     broker = KisBroker(
-        start_dt=pd.Timestamp.now(),
+        start_dt=start_dt,
         exchange=KrxExchange(),
         data_handler=data_handler,
         client=gateway,
@@ -187,7 +221,8 @@ def build_stack(args, guard=None):
             kill_switch_path=args.kill_switch,
             max_order_value=args.max_order_value,
             max_orders_per_session=len(args.universe) * 2
-        )
+        ),
+        clock=clock
     )
     return gateway, broker, data_handler
 
@@ -421,11 +456,19 @@ def stage_safety(args):
     """
     results = {}
 
+    # The short and kill-switch checks sit behind the market-hours gate
+    # in 'submit_order'. Run after the close they would be refused for
+    # being out of hours instead: the short check would pass for the
+    # wrong reason and the kill switch would never fire. So those two
+    # run on a clock reporting a live session, and only the first check
+    # uses an after-hours one.
+    session = last_session_timestamp()
+    closed = session.normalize() + pd.Timedelta(hours=18)
+    print('  session clock %s, after-hours clock %s' % (session, closed))
+
     # (a) Outside market hours.
-    _, broker, _ = build_stack(args)
+    _, broker, _ = build_stack(args, clock=lambda: closed)
     broker.seed_from_venue()
-    closed = pd.Timestamp.now().normalize() + pd.Timedelta(hours=18)
-    broker.clock = lambda: closed
     before = len(broker.ledger.get_open_orders())
     broker.submit_order(
         broker.account_id, Order(closed, args.universe[0], 1)
@@ -436,7 +479,7 @@ def stage_safety(args):
     print('  refused outside market hours: %s' % results['market_closed'])
 
     # (b) Selling what is not held.
-    _, broker, _ = build_stack(args)
+    _, broker, _ = build_stack(args, clock=lambda: session)
     broker.seed_from_venue()
     held = broker.get_portfolio_as_dict(broker.account_id)
     absent = next(
@@ -448,9 +491,7 @@ def stage_safety(args):
         results['short_refused'] = None
     else:
         before = len(broker.ledger.get_open_orders())
-        broker.submit_order(broker.account_id, Order(
-            pd.Timestamp.now(), absent, -1
-        ))
+        broker.submit_order(broker.account_id, Order(session, absent, -1))
         results['short_refused'] = (
             len(broker.ledger.get_open_orders()) == before
         )
@@ -462,9 +503,9 @@ def stage_safety(args):
     with open(args.kill_switch, 'w', encoding='utf-8') as handle:
         handle.write('engaged by kis_smoke.py\n')
     try:
-        _, broker, _ = build_stack(args)
+        _, broker, _ = build_stack(args, clock=lambda: session)
         broker.seed_from_venue()
-        order = Order(pd.Timestamp.now(), args.universe[0], 1)
+        order = Order(session, args.universe[0], 1)
         try:
             broker.submit_order(broker.account_id, order)
             results['kill_switch'] = False
