@@ -118,6 +118,10 @@ class KisBroker(Broker):
 
         self.portfolios = {}
         self.open_orders = {}
+        # Set by reconciliation when the engine believes it holds more
+        # than the venue reports. Selling shares that are not there is
+        # the failure this prevents.
+        self.trading_halted = False
         self._fill_buffer = []
         self._buffer_lock = threading.Lock()
         self._worker = None
@@ -465,6 +469,13 @@ class KisBroker(Broker):
         """
         portfolio_id_str = str(portfolio_id)
         dt = self._now()
+
+        if self.trading_halted:
+            self._log(
+                'Trading is halted after a position mismatch; refusing '
+                'order for %s.' % order.asset
+            )
+            return
 
         if not self.exchange.is_open_at_datetime(dt):
             self._log(
