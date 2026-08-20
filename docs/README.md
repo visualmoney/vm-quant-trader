@@ -56,6 +56,7 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0010](dev/adr/0010-telegram-gateway-plane.md) | 제안됨 | 대화형 운용(텔레그램 조회·킬스위치)은 분리 평면의 경량 게이트웨이 데몬이 제공한다 — 트레이딩 평면(0009 cron 단발)은 무변경 |
 | [0011](dev/adr/0011-package-rename-vmtrader.md) | **채택됨** | 패키지·배포명을 `qstrader`에서 `vmtrader`로 개명한다 — 업스트림은 휴면(45커밋 앞섬), 배포 메타데이터 정정과 함께 시행 |
 | [0012](dev/adr/0012-signal-history-from-venue.md) | **채택됨** | 신호용 과거 시세는 브로커 일봉 API에서 받고, cron 단발이라 **매 기동마다 신호 버퍼를 워밍업**한다 |
+| [0013](dev/adr/0013-real-money-promotion-criteria.md) | **채택됨** | 실전 승격은 자동 검증 7항 + 수동 확인 5항을 통과해야 한다 — 자동분은 원장으로 기계가 판정한다 |
 
 ### `dev/reports/` — 시점별 조사 보고서
 
