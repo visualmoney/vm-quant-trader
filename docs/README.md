@@ -12,6 +12,19 @@ VMTrader를 **사용해** 전략을 만들거나 실제로 굴리는 사람을 �
 | --- | --- | --- |
 | [kis-live-operations.md](user/kis-live-operations.md) | **모의투자 기준** | KIS 라이브 운용 — cron 두 줄, 휴장일 캐시, 킬스위치, 실행 후 확인 항목, 대조가 거래를 멈췄을 때의 조치 |
 
+## 진행 중인 작업은 어디에 있는가
+
+계획과 결정은 문서에, **추적은 GitHub 이슈**에 있다. 둘의 역할이 겹치지 않도록 정본을 한쪽에만 둔다.
+
+| 라벨 | 무엇 | 정본 |
+| --- | --- | --- |
+| `phase` | 설계안 §9의 단계 | [설계안 §9](dev/spec/kis-broker-design.md) |
+| `decision-gate` | 착수를 막는 미결 결정 | [설계안 §11](dev/spec/kis-broker-design.md) |
+| `unknown` | 관측으로만 풀리는 미확인 사항 | [스펙 §8](dev/spec/kis-broker.md) |
+| `blocked` | 미해소 게이트가 남은 작업 | — |
+
+이슈는 정본을 **참조만** 하고 복사하지 않는다. 이슈 템플릿은 `.github/ISSUE_TEMPLATE/`에 있다.
+
 ## `dev/` — 엔진 기여자용
 
 VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 테스트 정책, 기술부채.
