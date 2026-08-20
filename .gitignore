@@ -53,3 +53,6 @@ coverage.lcov
 
 # Editor settings
 .vscode/
+
+# Run artefacts: tearsheets, smoke ledgers, kill-switch flags
+out/
