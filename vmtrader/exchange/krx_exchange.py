@@ -1,6 +1,71 @@
 import datetime
+import json
 
 from vmtrader.exchange.exchange import Exchange
+
+
+def load_holidays(path):
+    """
+    Read a holiday calendar written by 'scripts/fetch_holidays.py'.
+
+    The calendar is a file rather than a live call because the venue
+    offers the endpoint only to real accounts, asks that it be called
+    about once a day, and would otherwise be consulted on every
+    launch. A file also means a session runs when the venue does not.
+
+    Parameters
+    ----------
+    path : `str`
+        Path to the JSON calendar.
+
+    Returns
+    -------
+    `set[datetime.date]`
+        Dates on which the exchange does not open.
+    """
+    with open(path, encoding='utf-8') as handle:
+        payload = json.load(handle)
+
+    holidays = set()
+    for text in payload.get('holidays', []):
+        holidays.add(datetime.date.fromisoformat(text))
+    return holidays
+
+
+def holiday_file_covers(path, dt):
+    """
+    Return whether a calendar file speaks for the given date.
+
+    A calendar that has run out is worse than no calendar, because it
+    reports every remaining day as a trading day. Callers check the
+    range rather than trusting the file's silence.
+
+    Parameters
+    ----------
+    path : `str`
+        Path to the JSON calendar.
+    dt : `pd.Timestamp` or `datetime.date`
+        The date to check for.
+
+    Returns
+    -------
+    `Boolean`
+        Whether the date falls inside the fetched range.
+    """
+    with open(path, encoding='utf-8') as handle:
+        payload = json.load(handle)
+
+    start = payload.get('start')
+    end = payload.get('end')
+    if not start or not end:
+        return False
+
+    date = dt.date() if hasattr(dt, 'date') else dt
+    return (
+        datetime.date.fromisoformat(start)
+        <= date
+        <= datetime.date.fromisoformat(end)
+    )
 
 
 class KrxExchange(Exchange):

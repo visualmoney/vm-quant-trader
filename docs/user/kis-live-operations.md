@@ -92,7 +92,34 @@ session.run_rebalance()                            # 또는 run_end_of_day()
 
 ## 5. 휴장일
 
-KRX 휴장일은 KIS의 **국내휴장일조회**(`chk_holiday`)가 알려준다. 다만 KIS가 **1일 1회 호출을 권고**하므로, 매일 한 번 받아 캐시해 두고 `KrxExchange(holidays=...)`에 넘긴다. 캐시가 없으면 주말만 걸러지고 공휴일에 주문을 시도하게 된다.
+KRX 휴장일은 KIS의 **국내휴장일조회**(`chk_holiday`)가 알려준다. 두 가지를 알아야 한다 — 이 엔드포인트는 **실전 계좌만 답하고**(모의는 `OPSQ0002 없는 서비스 코드`), KIS가 **1일 1회 호출을 권고**한다.
+
+그래서 조회는 별도 잡이 실전 계좌로 하고 결과를 파일에 캐시한다([ADR-0014](../dev/adr/0014-holiday-calendar-from-real-account.md)). 순수 조회이며 주문 경로는 없다.
+
+```cron
+# 휴장일 캘린더 — 토큰 발급(08:20)과 겹치지 않게
+40 7 * * * flock -n /home/ec2-user/lock/vmtrader-holidays.lock \
+  /path/to/run.sh python scripts/fetch_holidays.py \
+  --out /home/ec2-user/data/vmtrader/krx-holidays.json \
+  >> /home/ec2-user/log/vmtrader/holidays.log 2>&1
+```
+
+기동 스크립트는 이렇게 읽는다.
+
+```python
+from vmtrader.exchange.krx_exchange import (
+    KrxExchange, holiday_file_covers, load_holidays
+)
+
+path = '/home/ec2-user/data/vmtrader/krx-holidays.json'
+if not holiday_file_covers(path, pd.Timestamp.now()):
+    raise SystemExit('휴장일 캘린더가 오늘을 커버하지 않는다. 먼저 갱신할 것.')
+exchange = KrxExchange(holidays=load_holidays(path))
+```
+
+**범위 검사를 건너뛰지 말 것.** 범위가 지난 캘린더는 없느니만 못하다 — 끝난 뒤의 모든 날이 개장일로 보이기 때문이다.
+
+조회 프로세스는 자기 `HOME`(`~/.vmtrader/holiday-home`)을 쓴다. OTA의 토큰 캐시 파일명이 **서버를 구분하지 않아서**(`KIS<날짜>` 하나뿐), 같은 날 실전으로 인증하면 이후 모의 세션이 실전 토큰을 읽어 실패하기 때문이다.
 
 ---
 

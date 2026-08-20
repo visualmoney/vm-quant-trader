@@ -57,6 +57,7 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0011](dev/adr/0011-package-rename-vmtrader.md) | **채택됨** | 패키지·배포명을 `qstrader`에서 `vmtrader`로 개명한다 — 업스트림은 휴면(45커밋 앞섬), 배포 메타데이터 정정과 함께 시행 |
 | [0012](dev/adr/0012-signal-history-from-venue.md) | **채택됨** | 신호용 과거 시세는 브로커 일봉 API에서 받고, cron 단발이라 **매 기동마다 신호 버퍼를 워밍업**한다 |
 | [0013](dev/adr/0013-real-money-promotion-criteria.md) | **채택됨** | 실전 승격은 자동 검증 7항 + 수동 확인 5항을 통과해야 한다 — 자동분은 원장으로 기계가 판정한다 |
+| [0014](dev/adr/0014-holiday-calendar-from-real-account.md) | **채택됨** | 휴장일은 실전 계좌로 1일 1회 조회해 파일로 캐시한다 — 모의 서버는 이 엔드포인트를 제공하지 않으며, 조회 프로세스는 자기 `HOME`으로 토큰을 격리한다 |
 
 ### `dev/reports/` — 시점별 조사 보고서
 
