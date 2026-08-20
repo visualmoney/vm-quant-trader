@@ -179,3 +179,40 @@ def test_the_ledger_default_is_outside_a_deployment_path():
     """
     assert 'smoke' in smoke.DEFAULT_LEDGER
     assert 'smoke' in smoke.DEFAULT_KILL_SWITCH
+
+
+def test_the_session_clock_lands_inside_market_hours():
+    """
+    Tests the clock the safety stage runs its checks on.
+
+    Two of those checks sit behind the market-hours gate in
+    'submit_order'. Run after the close they would be refused for being
+    out of hours instead — the short check passing for the wrong reason
+    and the kill switch never firing at all.
+    """
+    from vmtrader.exchange.krx_exchange import KrxExchange
+
+    exchange = KrxExchange()
+    for now in [
+        pd.Timestamp('2026-08-20 16:00:00'),   # after the close
+        pd.Timestamp('2026-08-20 07:00:00'),   # before the open
+        pd.Timestamp('2026-08-22 11:00:00'),   # Saturday
+        pd.Timestamp('2026-08-23 11:00:00'),   # Sunday
+        pd.Timestamp('2026-08-20 12:00:00'),   # mid-session
+    ]:
+        session = smoke.last_session_timestamp(now)
+        assert exchange.is_open_at_datetime(session), now
+        assert session <= now
+
+
+def test_the_session_clock_does_not_jump_to_a_future_session():
+    """
+    Tests that a run before the open uses yesterday, not today.
+
+    Asking the venue about a session that has not happened yet would
+    be a different kind of wrong answer.
+    """
+    session = smoke.last_session_timestamp(
+        pd.Timestamp('2026-08-20 07:00:00')
+    )
+    assert session.date() == pd.Timestamp('2026-08-19').date()
