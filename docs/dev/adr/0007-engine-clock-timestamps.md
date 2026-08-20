@@ -2,7 +2,7 @@
 
 | 항목 | 내용 |
 | --- | --- |
-| 상태 | **제안됨 (Proposed)** — 미구현 |
+| 상태 | **채택됨 (Accepted)** — 구현됨 (2026-08-20, Phase 2) |
 | 작성일 | 2026-08-19 |
 | 맥락 | [spec/kis-broker-design.md](../spec/kis-broker-design.md) §10.2 |
 | 관련 요구 | FR-22, C-13 ([spec/kis-broker.md](../spec/kis-broker.md)), 실패모드 F15 |

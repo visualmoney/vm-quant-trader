@@ -453,6 +453,8 @@ sequenceDiagram
 
 **여기까지면**: 가짜 `BrokerClient`를 주입한 상태로 **주문 제출부터 포트폴리오 반영까지 전 경로가 통과**한다. 인수 기준 A-1·A-2 달성. 실제 KIS는 아직 붙지 않았지만, **엔진 쪽 위험은 전부 제거**된다. 이 시점에서 남은 위험은 순전히 KIS API 쪽이다.
 
+**상태: 완료 (2026-08-20).** `broker/kis_broker.py`(접수/정산 분리·엔진 시계·클램프), `broker/kis/guards.py`(플래그 파일 킬스위치), `broker/kis/ledger.py`(SQLite·체결 멱등), `broker/kis/worker.py`(FIFO 워커), `data/live_data_handler.py`가 들어왔고 `tests/integration/trading/test_live_session_e2e.py`가 전 경로를 돈다. 전체 스위트 **358건 → 402건 통과**. 구현 중 확인된 두 가지: ① Q4의 답은 브로커 내부 스로틀(위 표), ② 워커 스레드는 SQLite 연결을 공유할 수 없어 원장 팩토리가 스레드별 연결을 연다(§10.6.3 규칙 ②).
+
 ### Phase 3 — 게이트웨이와 라이브 세션
 
 | 산출물 | 내용 |
@@ -717,7 +719,7 @@ flowchart LR
 | Q1 | ~~한국 휴장일 캘린더를 어디서 얻는가?~~ **해소 (2026-08-19)** — KIS `chk_holiday`(국내휴장일조회, TR `CTCA0903R`)가 제공, 개장일여부는 `opnd_yn`. 1일 1회 호출 권고라 일 1회 조회 + 캐시로 구현 (C-6) | FR-9에 신규 런타임 의존 불필요 | 해소 |
 | Q2 | KIS가 주문 단위 실수수료를 응답하는가? — **부분 해소 (2026-08-19)**: `inquire_daily_ccld` output2에 `prsm_tlex_smtl`(추정제비용합계)이 있다. 실측이 아니라 추정이므로 근사 전제는 유지 | 요율 계산 대신 KIS 추정치를 쓸지 Phase 2에서 결정 | Phase 3 스모크(실측 대조) |
 | Q3 | 신호용 과거 시세를 어디서 얻는가? KIS 일봉 API인가, 기존 CSV인가? | 라이브에서도 `SMASignal` 등이 동작하려면 과거 데이터가 필요하다. 본 설계는 **시세(마크)만** 다루고 신호용 시계열은 미해결 | Phase 3 |
-| Q4 | `ExecutionHandler:86`의 주문당 `update(dt)` 호출을 라이브에서 어떻게 억제할 것인가? 스로틀인가, `ExecutionHandler` 수정인가? | ADR-0002의 트레이드오프. API 호출 낭비 | Phase 2 |
+| Q4 | ~~`ExecutionHandler`의 주문당 `update(dt)` 호출을 라이브에서 어떻게 억제할 것인가?~~ **해소 (2026-08-20, 구현됨)** — **브로커 내부 스로틀**을 택했다(`KisBroker.update(dt, force=False)`, 기본 60초). 코어(`ExecutionHandler`)는 건드리지 않는다 | 억제하지 않으면 (a) 레이트리밋을 대기자 없는 응답에 소모하고(NFR-1), (b) 마지막 종목이 접수되기도 전에 첫 종목의 체결이 반영된다 — 체결 수집은 `settle`의 책임이다(ADR-0006) | 해소 |
 | Q5 | ~~사이저의 `_estimate_trade_costs`가 부호를 잃는 문제를 어떻게 고칠 것인가?~~ **해소 (2026-08-20, 구현됨)** — 델타를 `abs()`로 뭉개는 대신 **부호를 보존해** `calc_total_cost(asset, ±quantity, ±consideration)`으로 넘긴다. 브로커가 이미 부호 있는 인자로 호출하므로(`broker/simulated_broker.py:574-582`) 이는 규약 통일이다 | **NFR-4 무영향 확인** — 기존 `FeeModel`은 전부 `abs(consideration)`을 쓰므로 금액이 불변이고, 전체 스위트 통과 | 해소 |
 | Q6 | 다중 프로세스/다중 전략이 같은 계좌를 쓸 때의 격리 | 현재 설계는 단일 프로세스·단일 전략 전제. lab은 `GroupCap`·`strategy` 귀속으로 해결했으나 본안 비범위 | 후속 |
 | Q7 | 미체결 잔량의 취소·재시도 | 현재는 STALE로 두고 다음 리밸런싱이 흡수. 슬리피지 누적 시 재검토 | 후속 |
