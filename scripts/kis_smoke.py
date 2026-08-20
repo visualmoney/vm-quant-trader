@@ -82,35 +82,68 @@ class SmokeError(RuntimeError):
     """
 
 
-def scaled_weights(symbols, budget, total_equity):
+def smoke_plan(symbols, budget, total_equity, holdings):
     """
-    Spread a budget evenly across the universe, as portfolio weights.
+    Turn a cash budget into a plan the sizer will actually honour.
 
-    The sizers work in fractions of total equity, so a fixed cash
-    budget has to be expressed as a fraction. Capping it at one means
-    a budget larger than the account simply means 'all of it'.
+    Two things about the sizer decide the shape of this. It
+    *normalises* the weight vector to sum to one, so scaling weights
+    down does not reduce exposure -- the first real run asked for a
+    million won and was handed orders worth 237 million, twice. And it
+    deploys 'total equity minus the cash buffer', which is the only
+    lever that does bound exposure.
+
+    The other trap is what is already in the account. Portfolio
+    construction zeroes anything absent from the target, so running a
+    two-name smoke against an account holding other things liquidates
+    them. It did, on the first run. Existing holdings are therefore
+    carried at their current value, which produces no trade for them.
 
     Parameters
     ----------
     symbols : `list[str]`
-        The universe.
+        The names the smoke wants to trade.
     budget : `float`
-        Cash to deploy, in account currency.
+        Cash to deploy across those names.
     total_equity : `float`
         The account's total equity.
+    holdings : `dict{str: float}`
+        Market value per symbol currently held.
 
     Returns
     -------
-    `dict{str: float}`
-        Target weights summing to at most one.
+    `tuple[dict, float, list]`
+        The un-normalised weights, the cash buffer that bounds
+        deployment, and the full universe including held names.
     """
     if total_equity <= 0.0:
         raise SmokeError(
             'The account reports no equity, so nothing can be sized.'
         )
-    exposure = min(budget / total_equity, 1.0)
-    per_name = exposure / len(symbols)
-    return dict((symbol, per_name) for symbol in symbols)
+
+    keep = dict(
+        (symbol, value) for symbol, value in holdings.items()
+        if symbol not in symbols and value > 0.0
+    )
+    per_name = budget / len(symbols)
+
+    weights = dict(keep)
+    for symbol in symbols:
+        weights[symbol] = per_name + holdings.get(symbol, 0.0)
+
+    deployed = sum(weights.values())
+    if deployed > total_equity:
+        raise SmokeError(
+            'The plan would deploy %.0f against equity of %.0f. Lower '
+            '--budget.' % (deployed, total_equity)
+        )
+
+    # The sizer spends 'equity x (1 - buffer)' and splits it by the
+    # normalised weights, so this buffer is what makes the numbers
+    # above come out as actual won.
+    cash_buffer = 1.0 - (deployed / total_equity)
+    universe = sorted(set(symbols) | set(keep))
+    return weights, cash_buffer, universe
 
 
 def build_stack(args, guard=None):
@@ -236,11 +269,26 @@ def stage_rebalance(args):
 
     gateway, broker, data_handler = build_stack(args)
     broker.seed_from_venue()
+    broker.update(pd.Timestamp.now(), force=True)
 
     equity = broker.get_portfolio_total_equity(broker.account_id)
-    weights = scaled_weights(args.universe, args.budget, equity)
-    print('  equity %.0f, budget %.0f, weights %s'
-          % (equity, args.budget, weights))
+    holdings = dict(
+        (symbol, position['market_value'])
+        for symbol, position in broker.get_portfolio_as_dict(
+            broker.account_id
+        ).items()
+    )
+    weights, cash_buffer, universe_symbols = smoke_plan(
+        args.universe, args.budget, equity, holdings
+    )
+    print('  equity %.0f, budget %.0f' % (equity, args.budget))
+    print('  already held (carried, not sold): %s'
+          % dict(
+              (s, round(v)) for s, v in holdings.items()
+              if s not in args.universe
+          ))
+    print('  plan (won): %s' % dict((s, round(v)) for s, v in weights.items()))
+    print('  cash buffer %.6f' % cash_buffer)
 
     if not broker.exchange.is_open_at_datetime(pd.Timestamp.now()):
         raise SmokeError(
@@ -248,9 +296,10 @@ def stage_rebalance(args):
             'stage between 09:00 and 15:30 on a trading day.'
         )
 
-    universe = StaticUniverse(args.universe)
+    universe = StaticUniverse(universe_symbols)
     sizer = DollarWeightedCashBufferedOrderSizer(
-        broker, broker.account_id, data_handler, cash_buffer_percentage=0.05
+        broker, broker.account_id, data_handler,
+        cash_buffer_percentage=cash_buffer
     )
     pcm = PortfolioConstructionModel(
         broker, broker.account_id, universe, sizer,
@@ -484,8 +533,9 @@ def main(argv=None):
         help='How long to collect fills before giving up.'
     )
     parser.add_argument(
-        '--poll-seconds', type=float, default=3.0,
-        help='Delay between fill polls.'
+        '--poll-seconds', type=float, default=6.0,
+        help='Delay between fill polls. The venue answers EGW00201 to '
+             'eager polling on a paper account.'
     )
     parser.add_argument('--ledger', default=DEFAULT_LEDGER)
     parser.add_argument('--kill-switch', default=DEFAULT_KILL_SWITCH)

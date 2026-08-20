@@ -497,3 +497,52 @@ def test_an_answered_holiday_enquiry_still_works():
     )
     gw = _gateway(functions)
     assert gw.get_trading_day('20260820') is True
+
+
+def test_calls_are_spaced_across_threads():
+    """
+    Tests the throttle NFR-8 required and a real run demanded.
+
+    The SDK's own delay sleeps inside the calling thread, which orders
+    nothing when the settle worker and the main thread both call. A
+    paper account answered EGW00201 — the per-second limit — while
+    polling two orders, so the gateway now enforces a minimum gap
+    across all callers.
+    """
+    import threading
+
+    functions = FakeFunctions(price_rows=[{'stck_prpr': '71000'}])
+    slept = []
+    gw = gateway.KisGateway(
+        env_dv='demo', cano='1', acnt_prdt_cd='01',
+        functions=functions, auth=FakeAuth(),
+        sleep=slept.append, min_call_interval=0.7
+    )
+
+    def call():
+        gw.get_price('EQ:005930')
+
+    threads = [threading.Thread(target=call) for _ in range(3)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    # The first call goes straight through; the rest wait.
+    assert len(slept) == 2
+    assert all(0.0 < delay <= 0.7 for delay in slept)
+
+
+def test_spacing_is_disabled_by_default_for_injected_gateways():
+    """
+    Tests that a gateway built directly, as tests do, does not sleep.
+
+    The interval is chosen by 'connect' from the server, so a unit test
+    assembling the object by hand is not slowed by it.
+    """
+    functions = FakeFunctions(price_rows=[{'stck_prpr': '71000'}])
+    slept = []
+    gw = _gateway(functions, sleeps=slept)
+    gw.get_price('EQ:005930')
+    gw.get_price('EQ:005930')
+    assert slept == []
