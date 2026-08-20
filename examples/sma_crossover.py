@@ -3,16 +3,16 @@ import os
 import pandas as pd
 import pytz
 
-from qstrader.alpha_model.alpha_model import AlphaModel
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.equity import Equity
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.data.backtest_data_handler import BacktestDataHandler
-from qstrader.data.daily_bar_csv import CSVDailyBarDataSource
-from qstrader.signals.signals_collection import SignalsCollection
-from qstrader.signals.sma import SMASignal
-from qstrader.statistics.tearsheet import TearsheetStatistics
-from qstrader.trading.backtest import BacktestTradingSession
+from vmtrader.alpha_model.alpha_model import AlphaModel
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.equity import Equity
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.data.backtest_data_handler import BacktestDataHandler
+from vmtrader.data.daily_bar_csv import CSVDailyBarDataSource
+from vmtrader.signals.signals_collection import SignalsCollection
+from vmtrader.signals.sma import SMASignal
+from vmtrader.statistics.tearsheet import TearsheetStatistics
+from vmtrader.trading.backtest import BacktestTradingSession
 
 from tearsheet_output import output_tearsheet, parse_args
 
@@ -149,7 +149,7 @@ def print_comparison(strategy_equity, benchmark_equity, periods=252):
     periods : `int`, optional
         The number of periods in a year, used for annualisation.
     """
-    from qstrader.statistics import performance as perf
+    from vmtrader.statistics import performance as perf
 
     def stats(equity_df):
         returns = equity_df['Equity'].pct_change().fillna(0.0)
@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
     # To avoid loading all CSV files in the directory, set the
     # data source to load only those provided symbols
-    csv_dir = os.environ.get('QSTRADER_CSV_DATA_DIR', '.')
+    csv_dir = os.environ.get('VMTRADER_CSV_DATA_DIR', '.')
     data_source = CSVDailyBarDataSource(csv_dir, Equity, csv_symbols=symbols)
     data_handler = BacktestDataHandler(universe, data_sources=[data_source])
 

@@ -2,9 +2,9 @@ import pandas as pd
 import pytz
 import pytest
 
-from qstrader.broker.portfolio.portfolio import Portfolio
-from qstrader.broker.portfolio.portfolio_event import PortfolioEvent
-from qstrader.broker.transaction.transaction import Transaction
+from vmtrader.broker.portfolio.portfolio import Portfolio
+from vmtrader.broker.portfolio.portfolio_event import PortfolioEvent
+from vmtrader.broker.transaction.transaction import Transaction
 
 
 def test_initial_settings_for_default_portfolio():

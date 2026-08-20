@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.alpha_model.single_signal import SingleSignalAlphaModel
+from vmtrader.alpha_model.single_signal import SingleSignalAlphaModel
 
 
 @pytest.mark.parametrize(

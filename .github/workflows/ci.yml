@@ -31,7 +31,7 @@ jobs:
       # .coveragerc sets fail_under, so a drop in coverage fails the build here
       # rather than only showing up on the Coveralls dashboard afterwards.
       - name: Test
-        run: uv run pytest --cov=qstrader
+        run: uv run pytest --cov=vmtrader
 
       - name: Lint
         run: uv run ruff check

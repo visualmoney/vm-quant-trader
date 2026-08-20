@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.simulation.event import SimulationEvent
+from vmtrader.simulation.event import SimulationEvent
 
 
 @pytest.mark.parametrize(

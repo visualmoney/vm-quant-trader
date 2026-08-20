@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from qstrader.env_file import (
+from vmtrader.env_file import (
     find_env_file, load_env_file, parse_env_file, parse_env_value
 )
 
@@ -38,7 +38,7 @@ def test_parse_env_file(tmp_path):
     env_path.write_text(
         '# a comment\n'
         '\n'
-        'QSTRADER_CSV_DATA_DIR=data\n'
+        'VMTRADER_CSV_DATA_DIR=data\n'
         'export EXPORTED=exported_value\n'
         '  SPACED  =  spaced value\n'
         'QUOTED="quoted value"\n'
@@ -50,7 +50,7 @@ def test_parse_env_file(tmp_path):
     )
 
     assert parse_env_file(str(env_path)) == {
-        'QSTRADER_CSV_DATA_DIR': 'data',
+        'VMTRADER_CSV_DATA_DIR': 'data',
         'EXPORTED': 'exported_value',
         'SPACED': 'spaced value',
         'QUOTED': 'quoted value',
@@ -64,13 +64,13 @@ def test_load_env_file_sets_missing_variables(tmp_path, monkeypatch):
     Tests that variables absent from the environment are applied.
     """
     env_path = tmp_path / '.env'
-    env_path.write_text('QSTRADER_TEST_VALUE=from_file\n', encoding='utf-8')
-    monkeypatch.delenv('QSTRADER_TEST_VALUE', raising=False)
+    env_path.write_text('VMTRADER_TEST_VALUE=from_file\n', encoding='utf-8')
+    monkeypatch.delenv('VMTRADER_TEST_VALUE', raising=False)
 
     applied = load_env_file(str(env_path), verbose=False)
 
-    assert applied == {'QSTRADER_TEST_VALUE': 'from_file'}
-    assert os.environ['QSTRADER_TEST_VALUE'] == 'from_file'
+    assert applied == {'VMTRADER_TEST_VALUE': 'from_file'}
+    assert os.environ['VMTRADER_TEST_VALUE'] == 'from_file'
 
 
 def test_load_env_file_does_not_override_environment(tmp_path, monkeypatch):
@@ -79,13 +79,13 @@ def test_load_env_file_does_not_override_environment(tmp_path, monkeypatch):
     over the value in the '.env' file.
     """
     env_path = tmp_path / '.env'
-    env_path.write_text('QSTRADER_TEST_VALUE=from_file\n', encoding='utf-8')
-    monkeypatch.setenv('QSTRADER_TEST_VALUE', 'from_environment')
+    env_path.write_text('VMTRADER_TEST_VALUE=from_file\n', encoding='utf-8')
+    monkeypatch.setenv('VMTRADER_TEST_VALUE', 'from_environment')
 
     applied = load_env_file(str(env_path), verbose=False)
 
     assert applied == {}
-    assert os.environ['QSTRADER_TEST_VALUE'] == 'from_environment'
+    assert os.environ['VMTRADER_TEST_VALUE'] == 'from_environment'
 
 
 def test_load_env_file_absent(tmp_path):
@@ -100,8 +100,8 @@ def test_find_env_file_walks_upwards(tmp_path, monkeypatch):
     Tests that a '.env' file is located in a parent directory when it is
     not present in the starting directory.
     """
-    monkeypatch.delenv('QSTRADER_ENV_FILE', raising=False)
-    (tmp_path / '.env').write_text('QSTRADER_TEST_VALUE=parent\n', encoding='utf-8')
+    monkeypatch.delenv('VMTRADER_ENV_FILE', raising=False)
+    (tmp_path / '.env').write_text('VMTRADER_TEST_VALUE=parent\n', encoding='utf-8')
     nested = tmp_path / 'nested' / 'deeper'
     nested.mkdir(parents=True)
 
@@ -110,14 +110,14 @@ def test_find_env_file_walks_upwards(tmp_path, monkeypatch):
 
 def test_find_env_file_honours_explicit_path(tmp_path, monkeypatch):
     """
-    Tests that QSTRADER_ENV_FILE overrides the directory search, and that
+    Tests that VMTRADER_ENV_FILE overrides the directory search, and that
     an explicit path pointing at a missing file yields None.
     """
     explicit = tmp_path / 'custom.env'
-    explicit.write_text('QSTRADER_TEST_VALUE=explicit\n', encoding='utf-8')
+    explicit.write_text('VMTRADER_TEST_VALUE=explicit\n', encoding='utf-8')
 
-    monkeypatch.setenv('QSTRADER_ENV_FILE', str(explicit))
+    monkeypatch.setenv('VMTRADER_ENV_FILE', str(explicit))
     assert find_env_file(str(tmp_path)) == str(explicit)
 
-    monkeypatch.setenv('QSTRADER_ENV_FILE', str(tmp_path / 'missing.env'))
+    monkeypatch.setenv('VMTRADER_ENV_FILE', str(tmp_path / 'missing.env'))
     assert find_env_file(str(tmp_path)) is None

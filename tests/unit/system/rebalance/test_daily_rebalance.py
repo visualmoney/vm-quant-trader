@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.system.rebalance.daily import DailyRebalance
+from vmtrader.system.rebalance.daily import DailyRebalance
 
 
 @pytest.mark.parametrize(

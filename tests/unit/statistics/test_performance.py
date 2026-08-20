@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from qstrader.statistics.performance import (
+from vmtrader.statistics.performance import (
     aggregate_returns,
     create_cagr,
     create_drawdowns,

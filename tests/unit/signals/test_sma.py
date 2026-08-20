@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.signals.sma import SMASignal
+from vmtrader.signals.sma import SMASignal
 
 
 @pytest.mark.parametrize(

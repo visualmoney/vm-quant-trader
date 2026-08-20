@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.portcon.optimiser.fixed_weight import (
+from vmtrader.portcon.optimiser.fixed_weight import (
     FixedWeightPortfolioOptimiser
 )
 

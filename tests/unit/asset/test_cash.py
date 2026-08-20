@@ -1,6 +1,6 @@
 import pytest
 
-from qstrader.asset.cash import Cash
+from vmtrader.asset.cash import Cash
 
 
 @pytest.mark.parametrize(

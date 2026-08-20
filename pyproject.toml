@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "qstrader"
+name = "vmtrader"
 version = "0.3.16"
 dependencies = [
     "matplotlib>=3.8",
@@ -13,12 +13,9 @@ dependencies = [
     "seaborn>=0.13",
 ]
 authors = [
-    {name="Michael Halls-Moore", email="support@quantstart.com"}
+    {name="visualmoney", email="visualmoney2@gmail.com"}
 ]
-maintainers = [
-    {name="Juliette James", email="juliette.james@quantstart.com"}
-]
-description = "QSTrader backtesting simulation engine"
+description = "VMTrader systematic trading engine — backtesting and live execution"
 readme = "README.md"
 requires-python = ">= 3.10"
 # Dual licensed: a user may choose either license. The MIT terms are retained
@@ -41,10 +38,12 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mhallsmoore/qstrader"
-Issues = "https://github.com/mhallsmoore/qstrader/issues"
-Documentation = "https://www.quantstart.com/qstrader/"
-Website = "https://www.quantstart.com"
+Homepage = "https://github.com/visualmoney/vm-quant-trader"
+Issues = "https://github.com/visualmoney/vm-quant-trader/issues"
+
+# Derived from the MIT-licensed QSTrader by Michael Halls-Moore (QuantStart),
+# whose upstream has been dormant since 2024-06. See LICENSE-MIT.
+Upstream = "https://github.com/mhallsmoore/qstrader"
 
 # These groups are the single declaration of every non-runtime dependency.
 # uv reads them directly, and pip 25.1 and later can too, with '--group <name>'.
@@ -66,7 +65,7 @@ examples = [
 
 # Only needed by the command-line scripts in scripts/, which are run from a
 # repository checkout and are not part of the distributed package. No module
-# under qstrader/ imports click, so it does not belong in the runtime
+# under vmtrader/ imports click, so it does not belong in the runtime
 # dependencies.
 scripts = [
     "click>=8.0",

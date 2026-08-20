@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.signals.momentum import MomentumSignal
+from vmtrader.signals.momentum import MomentumSignal
 
 
 @pytest.mark.parametrize(

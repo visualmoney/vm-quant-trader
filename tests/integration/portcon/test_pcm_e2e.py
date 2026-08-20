@@ -3,16 +3,16 @@ from unittest.mock import Mock
 import pandas as pd
 import pytz
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.broker.simulated_broker import SimulatedBroker
-from qstrader.exchange.simulated_exchange import SimulatedExchange
-from qstrader.execution.order import Order
-from qstrader.portcon.pcm import PortfolioConstructionModel
-from qstrader.portcon.optimiser.fixed_weight import (
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.broker.simulated_broker import SimulatedBroker
+from vmtrader.exchange.simulated_exchange import SimulatedExchange
+from vmtrader.execution.order import Order
+from vmtrader.portcon.pcm import PortfolioConstructionModel
+from vmtrader.portcon.optimiser.fixed_weight import (
     FixedWeightPortfolioOptimiser
 )
-from qstrader.portcon.order_sizer.dollar_weighted import (
+from vmtrader.portcon.order_sizer.dollar_weighted import (
     DollarWeightedCashBufferedOrderSizer
 )
 

@@ -18,23 +18,23 @@
 
 | 구분 | 대상 | 내용 | 근거 요구 |
 | --- | --- | --- | --- |
-| **신규** | `qstrader/broker/kis/client.py` | `BrokerClient` Protocol + `OrderReport` 데이터클래스 (KIS SDK 무의존) | FR-2·FR-3, NFR-3 |
-| **신규** | `qstrader/broker/kis/parse.py` | KIS 응답 dict → 값 파서 (lab `adapters/live/kis.py` 이식) | FR-3·FR-7, NFR-2 |
-| **신규** | `qstrader/broker/kis_broker.py` | `Broker` ABC 구현체. 주문 큐 + 폴링 + `Portfolio` 갱신 | FR-1~FR-6 |
-| **신규** | `qstrader/broker/kis/ledger.py` | SQLite 주문 원장 (write-ahead, append-only) | FR-16, NFR-6 |
-| **신규** | `qstrader/broker/kis/reconcile.py` | 기동 시·주기적 잔고 대조 | FR-7·FR-8 |
-| **신규** | `qstrader/broker/fee_model/korea_fee_model.py` | 매도 전용 거래세 모델 | FR-13 |
-| **신규** | `qstrader/exchange/krx_exchange.py` | KRX 장운영시간·휴장일 | FR-9 |
-| **신규** | `qstrader/data/live_data_handler.py` | KIS 현재가 → `DataHandler` 계약 | FR-10 |
-| **신규** | `qstrader/trading/live.py` | `LiveTradingSession` | FR-17 |
-| **신규** | `qstrader/broker/kis/guards.py` | 주문 한도·킬스위치 | FR-19 |
-| **신규** | `qstrader/broker/kis/worker.py` | 단일 FIFO 태스크 큐 워커 — `smtm/worker.py` 이식 (lab `FillPumpWorker`로 검증됨) | FR-24, [ADR-0008](../adr/0008-task-queue-fill-pump.md) |
+| **신규** | `vmtrader/broker/kis/client.py` | `BrokerClient` Protocol + `OrderReport` 데이터클래스 (KIS SDK 무의존) | FR-2·FR-3, NFR-3 |
+| **신규** | `vmtrader/broker/kis/parse.py` | KIS 응답 dict → 값 파서 (lab `adapters/live/kis.py` 이식) | FR-3·FR-7, NFR-2 |
+| **신규** | `vmtrader/broker/kis_broker.py` | `Broker` ABC 구현체. 주문 큐 + 폴링 + `Portfolio` 갱신 | FR-1~FR-6 |
+| **신규** | `vmtrader/broker/kis/ledger.py` | SQLite 주문 원장 (write-ahead, append-only) | FR-16, NFR-6 |
+| **신규** | `vmtrader/broker/kis/reconcile.py` | 기동 시·주기적 잔고 대조 | FR-7·FR-8 |
+| **신규** | `vmtrader/broker/fee_model/korea_fee_model.py` | 매도 전용 거래세 모델 | FR-13 |
+| **신규** | `vmtrader/exchange/krx_exchange.py` | KRX 장운영시간·휴장일 | FR-9 |
+| **신규** | `vmtrader/data/live_data_handler.py` | KIS 현재가 → `DataHandler` 계약 | FR-10 |
+| **신규** | `vmtrader/trading/live.py` | `LiveTradingSession` | FR-17 |
+| **신규** | `vmtrader/broker/kis/guards.py` | 주문 한도·킬스위치 | FR-19 |
+| **신규** | `vmtrader/broker/kis/worker.py` | 단일 FIFO 태스크 큐 워커 — `smtm/worker.py` 이식 (lab `FillPumpWorker`로 검증됨) | FR-24, [ADR-0008](../adr/0008-task-queue-fill-pump.md) |
 | **신규(저장소 밖 경계)** | `scripts/kis_gateway.py` | OTA를 import하는 **유일한** 파일. `BrokerClient` 실구현 | NFR-3, C-1 |
-| **신규(엔진 밖·상주)** | `scripts/telegram_gateway.py` | 텔레그램 대화형 운용 데몬 — pandas·qstrader·OTA 무의존, 원장 읽기 전용 + 킬스위치 플래그 쓰기 | FR-25, NFR-10, [ADR-0010](../adr/0010-telegram-gateway-plane.md) |
-| **변경** | `qstrader/broker/broker.py` | `update(dt)`를 추상 메서드로 승격 | [ADR-0004](../adr/0004-promote-update-to-abc.md) |
-| **변경** | `qstrader/settings.py:1-4` | `SUPPORTED['CURRENCIES']`에 `'KRW'` 추가 | FR-12 |
-| **변경** | `qstrader/execution/execution_handler.py:83-86` | 주문마다 `update(dt)` 호출하는 루프의 재검토 | [ADR-0006](../adr/0006-decouple-submit-from-fill.md) |
-| **변경** | `qstrader/trading/backtest.py:342,349` | ABC 밖 접근 2곳을 ABC 경유로 (선택) | FR-6 |
+| **신규(엔진 밖·상주)** | `scripts/telegram_gateway.py` | 텔레그램 대화형 운용 데몬 — pandas·vmtrader·OTA 무의존, 원장 읽기 전용 + 킬스위치 플래그 쓰기 | FR-25, NFR-10, [ADR-0010](../adr/0010-telegram-gateway-plane.md) |
+| **변경** | `vmtrader/broker/broker.py` | `update(dt)`를 추상 메서드로 승격 | [ADR-0004](../adr/0004-promote-update-to-abc.md) |
+| **변경** | `vmtrader/settings.py:1-4` | `SUPPORTED['CURRENCIES']`에 `'KRW'` 추가 | FR-12 |
+| **변경** | `vmtrader/execution/execution_handler.py:83-86` | 주문마다 `update(dt)` 호출하는 루프의 재검토 | [ADR-0006](../adr/0006-decouple-submit-from-fill.md) |
+| **변경** | `vmtrader/trading/backtest.py:342,349` | ABC 밖 접근 2곳을 ABC 경유로 (선택) | FR-6 |
 
 **변경하지 않는 것**: `OrderSizer` 2종, `PortfolioConstructionModel`, `AlphaModel` 전체, `Portfolio`/`Position`/`PositionHandler`, `Transaction`, 통계 계층. 이들이 그대로 재사용되는 것이 이 연동의 목적이다(스펙 §1.1).
 
@@ -175,7 +175,7 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    subgraph engine["qstrader 엔진 (OTA 무의존 · 네트워크 무의존)"]
+    subgraph engine["vmtrader 엔진 (OTA 무의존 · 네트워크 무의존)"]
         LTS["LiveTradingSession<br/>trading/live.py"]
         QTS["QuantTradingSystem<br/>system/qts.py — 무변경"]
         SIZER["OrderSizer<br/>portcon/order_sizer/* — 무변경"]
@@ -237,7 +237,7 @@ flowchart TB
 
 ### 3.3 심볼 매핑
 
-기존 엔진은 `'EQ:SPY'` 형식의 QSTrader 심볼을 쓴다(보고서 05 §2에서 역추출된 계약). KIS는 6자리 종목코드(`pdno`, 예: `005930`)를 쓴다. 게이트웨이 경계에서 `'EQ:005930' ↔ '005930'`을 변환한다 — **엔진은 항상 `EQ:` 접두 심볼만 본다.** 이렇게 두면 `StaticUniverse`·`Portfolio`·통계가 무변경으로 동작한다.
+기존 엔진은 `'EQ:SPY'` 형식의 VMTrader 심볼을 쓴다(보고서 05 §2에서 역추출된 계약). KIS는 6자리 종목코드(`pdno`, 예: `005930`)를 쓴다. 게이트웨이 경계에서 `'EQ:005930' ↔ '005930'`을 변환한다 — **엔진은 항상 `EQ:` 접두 심볼만 본다.** 이렇게 두면 `StaticUniverse`·`Portfolio`·통계가 무변경으로 동작한다.
 
 ---
 
@@ -404,7 +404,7 @@ sequenceDiagram
 | 단위 | `tests/unit/broker/kis/test_ledger.py` | 원장 | 임시 SQLite. 전이 검증, fills UNIQUE 이중 반영 차단, append-only |
 | 단위 | `tests/unit/broker/kis/test_reconcile.py` | 대조 | 원장·잔고 fixture 조합. F7~F10 각각의 판정 |
 | 단위 | `tests/unit/broker/kis/test_guards.py` | 가드 | 금액 초과·건수 초과·킬스위치(플래그 파일 존재 시 거부 — FR-19) |
-| 단위 | `tests/unit/test_telegram_gateway.py` | 텔레그램 게이트웨이 | 가짜 텔레그램 HTTP + 임시 SQLite(읽기 전용 URI). 명령 3종 응답, 타 `chat_id` 무시, 플래그 생성·삭제, pandas·qstrader import 부재 (FR-25, NFR-10) |
+| 단위 | `tests/unit/test_telegram_gateway.py` | 텔레그램 게이트웨이 | 가짜 텔레그램 HTTP + 임시 SQLite(읽기 전용 URI). 명령 3종 응답, 타 `chat_id` 무시, 플래그 생성·삭제, pandas·vmtrader import 부재 (FR-25, NFR-10) |
 | 단위 | `tests/unit/broker/kis/test_worker.py` | 태스크 큐 워커 | FIFO 순서 보존, `None` 센티넬 종료(적재분 전부 소화 후 종료 — 유실 0), `join_tasks()` 배리어, `on_error` 경로, `stop()` 후 재기동 멱등. 스레드가 1개뿐이므로 동기화 테스트가 아니라 **순서 테스트**다 |
 | 단위 | `tests/unit/broker/test_kis_broker_settle.py` | 정산 스레드 경계 | 가짜 클라이언트 + 주입 `sleep`·가짜 시계. (a) 접수·폴링 병행(FR-24), (b) 워커 경로 `transact_asset` 부재 — 버퍼 경유만(NFR-8), (c) 데드라인 조기 종료·STALE, (d) 킬스위치 중 정산 중단 |
 | 단위 | `tests/unit/broker/fee_model/test_korea_fee_model.py` | 매도세 비대칭 | 동일 규모 매수/매도 비교 (기존 `test_percent_fee_model.py`와 나란히) |
@@ -471,7 +471,7 @@ Phase 1→2는 **의존 방향**이 강제한다(브로커가 파서·캘린더�
 
 ## 10. 시간 모델과 비동기 체결 — 아키텍처 재검토
 
-> 이 절은 최초 설계안(2026-08-19)에 대한 **사후 검토**다. "qstrader는 스케줄 구동 엔진인데 실제 체결은 비동기"라는 지적에 답한다. 결론적으로 **[ADR-0002](../adr/0002-blocking-fill-polling.md)는 폐기**되고 [ADR-0006](../adr/0006-decouple-submit-from-fill.md)으로 대체된다.
+> 이 절은 최초 설계안(2026-08-19)에 대한 **사후 검토**다. "vmtrader는 스케줄 구동 엔진인데 실제 체결은 비동기"라는 지적에 답한다. 결론적으로 **[ADR-0002](../adr/0002-blocking-fill-polling.md)는 폐기**되고 [ADR-0006](../adr/0006-decouple-submit-from-fill.md)으로 대체된다.
 
 ### 10.1 판정
 
@@ -570,7 +570,7 @@ trading/backtest.py:437-442    if event.event_type == "market_close":
 
 두 가지가 특히 시사적이다.
 
-1. **smtm은 시뮬레이션과 실거래를 같은 콜백 계약으로 묶었다.** qstrader의 `Broker` ABC가 docstring으로 선언만 하고(`broker.py:6-10`) 이루지 못한 것을 실제로 달성한 사례다. 우리의 대응물은 콜백이 아니라 `Portfolio.transact_asset()`이다 — 계약의 형태는 다르지만 **"체결은 나중에 도착한다"**는 사실을 인터페이스가 인정해야 한다는 교훈은 같다.
+1. **smtm은 시뮬레이션과 실거래를 같은 콜백 계약으로 묶었다.** vmtrader의 `Broker` ABC가 docstring으로 선언만 하고(`broker.py:6-10`) 이루지 못한 것을 실제로 달성한 사례다. 우리의 대응물은 콜백이 아니라 `Portfolio.transact_asset()`이다 — 계약의 형태는 다르지만 **"체결은 나중에 도착한다"**는 사실을 인터페이스가 인정해야 한다는 교훈은 같다.
 2. **취소가 인터페이스에 있다.** 우리 스펙은 정정/취소를 비범위로 뒀는데(§2), 데드라인 초과 시 미체결 잔량을 어떻게 할 것인가라는 물음이 §10.5-③에서 되돌아온다.
 
 **차이가 결론을 바꾸는 지점**: smtm은 24시간 시장이라 "장 마감"이라는 하드 데드라인이 없고, 암호화폐 시장가 체결은 거의 즉시다. KRX 주식은 15:30에 시장이 닫히고 D+2 결제가 있다. 따라서 우리는 smtm에 없는 **시간 예산(deadline)** 개념이 반드시 필요하다.
@@ -662,7 +662,7 @@ vm-quant-lab/.../adapters/live/broker_parse.py:39-45
 
 #### 10.6.2 모듈 배치와 수명주기
 
-- **모듈**: `qstrader/broker/kis/worker.py` — lab `FillPumpWorker` 이식(ADR-0003). `Portfolio`도 KIS 필드도 모르는 순수 프리미티브.
+- **모듈**: `vmtrader/broker/kis/worker.py` — lab `FillPumpWorker` 이식(ADR-0003). `Portfolio`도 KIS 필드도 모르는 순수 프리미티브.
 - **소유**: `KisBroker`가 사이클마다 워커를 생성한다. 첫 `submit_order`에서 lazy 기동, `settle(deadline)` 종료부에서 `stop()`(센티넬 + join). **상주 스레드 없음** — 세션 프로세스에 리밸런싱 사이클보다 오래 사는 스레드가 없다.
 - **큐에 들어가는 태스크는 한 종류뿐**: 폴링 태스크 `{runnable, order_no, order_key, symbol, requested, deadline}`. 태스크는 종결·데드라인·킬스위치까지 폴링하고, 체결 증분을 (a) 스레드별 원장 연결에 기록, (b) 락 버퍼에 적재한다. 종료 센티넬은 `None`. **원장 기록 등 부수 작업의 별도 비동기화는 하지 않는다** — 태스크 종류가 늘면 순서 추론이 무너진다(lab도 단일 FIFO·PriorityQueue 금지를 명시, `worker.py:16-17`).
 - **종료 시퀀스** (정상/데드라인/킬스위치 공통 골격): 접수 중단 → 잔여 태스크가 데드라인·플래그를 보고 빠르게 소진 → `stop()`(적재분 전부 소화 후 join — 유실 0) → 메인 스레드가 버퍼를 FIFO로 드레인해 `Transaction` 생성·`transact_asset`(엔진 시계) → 미결 잔존분 STALE. **취소 주문은 내지 않는다**(§10.5-⑤).

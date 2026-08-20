@@ -6,16 +6,16 @@
 | 작성일 | 2026-08-19 |
 | 관점 | Software Architect |
 | 상태 | **초안 — 미구현** (설계는 [kis-broker-design.md](kis-broker-design.md)) |
-| 근거 | 현행 코드 실측 (`qstrader/broker/*`, `qstrader/trading/backtest.py`) + 참조 구현 `vm-quant-lab` (KIS 라이브 가동 중) |
+| 근거 | 현행 코드 실측 (`vmtrader/broker/*`, `vmtrader/trading/backtest.py`) + 참조 구현 `vm-quant-lab` (KIS 라이브 가동 중) |
 | 문서 성격 | `docs/dev/` 직하 = **살아있는 문서**. 코드 변경과 함께 갱신한다 |
 
 ---
 
 ## 1. 목적과 배경
 
-QSTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클래스 docstring이 그렇게 선언한다 — *"Both simulated and live brokers will be derived from this ABC. This ensures that trading algorithm specific logic is completely identical for both simulated and live environments."* (`qstrader/broker/broker.py:6-10`)
+VMTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클래스 docstring이 그렇게 선언한다 — *"Both simulated and live brokers will be derived from this ABC. This ensures that trading algorithm specific logic is completely identical for both simulated and live environments."* (`vmtrader/broker/broker.py:6-10`)
 
-그러나 상속 구현체는 `SimulatedBroker` 하나뿐이고, `TradingSession` 구현체도 `BacktestTradingSession` 하나뿐이다(`qstrader/trading/` 디렉터리에 `backtest.py`와 ABC만 존재). 즉 **설계 의도만 있고 라이브 평면은 비어 있다.** 이 스펙은 그 빈 평면을 KIS 국내주식 현물로 채우기 위한 요구사항을 정의한다.
+그러나 상속 구현체는 `SimulatedBroker` 하나뿐이고, `TradingSession` 구현체도 `BacktestTradingSession` 하나뿐이다(`vmtrader/trading/` 디렉터리에 `backtest.py`와 ABC만 존재). 즉 **설계 의도만 있고 라이브 평면은 비어 있다.** 이 스펙은 그 빈 평면을 KIS 국내주식 현물로 채우기 위한 요구사항을 정의한다.
 
 부가 배경: 같은 사용자의 별도 저장소 `vm-quant-lab`이 이미 KIS 연동을 가동 중이다(`packages/adapters/live/`, `packages/brokers/kis/`). 검증된 파서·클라이언트·원장·가드가 존재하므로, 본 연동은 **백지 개발이 아니라 검증된 자산의 재사용 문제**다. 또한 운용 호스트(C-15)에서 가동 중인 기존 엔진(hybridma)의 **실집행 슬롯은 본 연동이 완성되면 본 엔진으로 교체한다** — 같은 기능을 두 엔진으로 병행 구동하지 않는다. 따라서 동거 봇과의 자원 경합(C-15)은 **과도기 제약**이다.
 
@@ -23,9 +23,9 @@ QSTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클�
 
 | 대안 | 문제 |
 | --- | --- |
-| lab에서만 라이브 운용 | 백테스트(qstrader)와 라이브(lab)의 사이징·회계 코드가 다르다 → 백테스트 성과가 라이브를 예측하지 못한다 |
+| lab에서만 라이브 운용 | 백테스트(vmtrader)와 라이브(lab)의 사이징·회계 코드가 다르다 → 백테스트 성과가 라이브를 예측하지 못한다 |
 | 신규 라이브 엔진 작성 | 알파모델·리밸런싱·통계 계층을 두 번 만든다 |
-| **qstrader에 라이브 브로커 추가 (본안)** | 알파모델·`PortfolioConstructionModel`·`OrderSizer`·통계가 **그대로** 라이브에 재사용된다 |
+| **vmtrader에 라이브 브로커 추가 (본안)** | 알파모델·`PortfolioConstructionModel`·`OrderSizer`·통계가 **그대로** 라이브에 재사용된다 |
 
 ---
 
@@ -102,14 +102,14 @@ QSTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클�
 | --- | --- | --- |
 | **NFR-1** | KIS 레이트리밋(`EGW00201` 초당 거래건수 초과)에 대응한다. **조회 계열**은 빈 응답 백오프 재시도, **주문(`order_cash`)은 재시도 금지**(비멱등 — 중복 주문 위험), **체결조회는 재시도 금지**(빈 응답이 정상 미체결과 구분 불가) | 가짜 클라이언트로 재시도 횟수·미재시도 단언 |
 | **NFR-2** | 전 테스트가 **네트워크 없이** 통과한다. KIS SDK(OTA)가 설치되지 않은 환경에서도 `import` 및 단위 테스트가 성립한다 | CI에서 OTA 미설치 상태로 전체 스위트 실행 |
-| **NFR-3** | KIS SDK·`open-trading-api`·인증 토큰 처리는 **어댑터 1개 모듈에만** 존재한다. `qstrader.broker.kis_broker`를 포함한 엔진 코어는 OTA를 직접 import하지 않는다 | `grep`으로 import 경계 검사하는 테스트 |
+| **NFR-3** | KIS SDK·`open-trading-api`·인증 토큰 처리는 **어댑터 1개 모듈에만** 존재한다. `vmtrader.broker.kis_broker`를 포함한 엔진 코어는 OTA를 직접 import하지 않는다 | `grep`으로 import 경계 검사하는 테스트 |
 | **NFR-4** | 백테스트 코드경로는 **동작이 바뀌지 않는다**. 기존 스위트 전건 통과, 기존 백테스트의 최종 자본이 센트 단위까지 동일 | 기존 e2e fixture(`tests/integration/trading/`) 회귀 |
 | **NFR-5** | 주문·체결·거부·불일치는 구조화된 로그로 남는다. 로그만으로 "어느 시각에 무엇을 왜 주문했고 얼마나 체결됐는가"를 재구성할 수 있다 | 로그 필드 목록 리뷰 |
 | **NFR-6** | 동일 체결이 포트폴리오에 **두 번 반영되지 않는다** (프로세스 재기동·재조회 시에도) | 같은 체결 스냅샷 2회 반영 시도 → 포지션 불변 단언 |
 | **NFR-7** | 종목 20개 리밸런싱 1회가 KIS 레이트리밋 준수 하에 **10분 이내** 완료된다 | 가짜 클라이언트에 실측 지연을 넣은 시뮬레이션 |
 | **NFR-8** | 스레드 경계 규칙: 워커↔메인 스레드의 공유 상태는 (a) 락으로 보호된 체결 증분 버퍼, (b) 스레드별 연결의 SQLite 원장 **둘뿐**이다. `Portfolio`·`Position`·엔진 시계는 메인 스레드 전용. 게이트웨이는 두 스레드에서 동시 호출되므로(메인 `place_order` ∥ 워커 체결조회) 스로틀·토큰 갱신이 **스레드 안전**해야 한다 — 참조 구현 lab의 `ratelimit.py`에는 이 보호가 없어 본 저장소가 추가해야 한다 | 스레드 경계 검사 테스트(FR-24 (b)) + 게이트웨이 스로틀·토큰 경로의 락 존재 리뷰 |
 | **NFR-9** | 공유 호스트 자원 상한(C-15): 라이브 기동 1회(리밸런싱·장마감 공통)의 **피크 RSS는 400MiB 이하**다 — 가용 메모리(실측 260~590MiB 변동) 하에서 스왑 스래싱 없이 완주해야 NFR-7의 10분 예산이 성립한다. 신규 영속 산출물(원장·로그·자본곡선)은 **유계**다 — 로그는 로테이션(호스트 관례 10MiB×8 동형), 원장 포함 합계 200MB 이하(루트 가용 약 0.7GB) | Phase 3 스모크(A-3)를 `/usr/bin/time -v`로 실행해 Maximum resident set size 단언 + 스모크 전후 원장·로그 `du` 측정 + 로테이션 설정 리뷰 |
-| **NFR-10** | 텔레그램 게이트웨이(FR-25)는 **pandas·qstrader·OTA를 import하지 않으며**(`requests`+`sqlite3`만), 상주 RSS는 **80MiB 이하**다 — 근거: `python + requests + sqlite3` import 직후 maxrss 약 26MiB 실측(2026-08-19, 검토 환경 — **t3.micro 실측 아님, 추정치**). 원장 접근은 **읽기 전용**(SQLite URI `mode=ro`) 연결만 사용한다 — 쓰기는 킬스위치 플래그 파일뿐 | `grep` import 경계 테스트 + Phase 3에서 상주 24시간 후 RSS 실측(`ps`) + 읽기 전용 URI·플래그 경로 코드 리뷰 |
+| **NFR-10** | 텔레그램 게이트웨이(FR-25)는 **pandas·vmtrader·OTA를 import하지 않으며**(`requests`+`sqlite3`만), 상주 RSS는 **80MiB 이하**다 — 근거: `python + requests + sqlite3` import 직후 maxrss 약 26MiB 실측(2026-08-19, 검토 환경 — **t3.micro 실측 아님, 추정치**). 원장 접근은 **읽기 전용**(SQLite URI `mode=ro`) 연결만 사용한다 — 쓰기는 킬스위치 플래그 파일뿐 | `grep` import 경계 테스트 + Phase 3에서 상주 24시간 후 RSS 실측(`ps`) + 읽기 전용 URI·플래그 경로 코드 리뷰 |
 
 ---
 

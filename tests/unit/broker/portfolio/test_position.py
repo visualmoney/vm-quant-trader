@@ -3,8 +3,8 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.broker.portfolio.position import Position
-from qstrader.broker.transaction.transaction import Transaction
+from vmtrader.broker.portfolio.position import Position
+from vmtrader.broker.transaction.transaction import Transaction
 
 
 def test_basic_long_equities_position():

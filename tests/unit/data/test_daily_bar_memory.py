@@ -3,9 +3,9 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.data.backtest_data_handler import BacktestDataHandler
-from qstrader.data.daily_bar_memory import InMemoryDailyBarDataSource
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.data.backtest_data_handler import BacktestDataHandler
+from vmtrader.data.daily_bar_memory import InMemoryDailyBarDataSource
 
 
 # Three daily bars carrying a 2:1 split before the final day, so that the

@@ -4,12 +4,12 @@ import pandas as pd
 import pytz
 import pytest
 
-from qstrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
-from qstrader.asset.universe.static import StaticUniverse
-from qstrader.broker.fee_model.percent_fee_model import PercentFeeModel
-from qstrader.trading.backtest import BacktestTradingSession
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.universe.static import StaticUniverse
+from vmtrader.broker.fee_model.percent_fee_model import PercentFeeModel
+from vmtrader.trading.backtest import BacktestTradingSession
 
-from qstrader import settings
+from vmtrader import settings
 
 
 def test_backtest_sixty_forty(etf_filepath):
@@ -20,7 +20,7 @@ def test_backtest_sixty_forty(etf_filepath):
     market values after a single month's worth of daily
     backtesting.
     """
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
 
     assets = ['EQ:ABC', 'EQ:DEF']
     universe = StaticUniverse(assets)
@@ -84,7 +84,7 @@ def test_backtest_sixty_forty_with_fees(etf_filepath):
     the cost path was never exercised end to end: mutating the commission
     calculation by a factor of one hundred left them all passing.
     """
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
 
     assets = ['EQ:ABC', 'EQ:DEF']
     universe = StaticUniverse(assets)
@@ -154,7 +154,7 @@ def test_backtest_long_short_leveraged(etf_filepath):
     orders as well as correctly calculated market values after
     a single month's worth of daily backtesting.
     """
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
 
     assets = ['EQ:ABC', 'EQ:DEF']
     universe = StaticUniverse(assets)
@@ -210,7 +210,7 @@ def test_backtest_buy_and_hold(etf_filepath, capsys):
     a business day.
     """
     settings.print_events = True
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
     assets = ['EQ:GHI']
     universe = StaticUniverse(assets)
     alpha_model = FixedSignalsAlphaModel({'EQ:GHI': 1.0})
@@ -238,7 +238,7 @@ def test_backtest_target_allocations(etf_filepath,):
     """
     """
     settings.print_events = True
-    os.environ['QSTRADER_CSV_DATA_DIR'] = etf_filepath
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
 
     assets = ['EQ:ABC', 'EQ:DEF']
     universe = StaticUniverse(assets)

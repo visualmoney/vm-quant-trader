@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 import pytz
 
-from qstrader.asset.universe.dynamic import DynamicUniverse
+from vmtrader.asset.universe.dynamic import DynamicUniverse
 
 
 @pytest.mark.parametrize(
