@@ -26,6 +26,7 @@ order to real money.
 
 import os
 import sys
+import threading
 import time
 
 
@@ -41,6 +42,13 @@ MAX_CHART_PAGES = 10
 # Paper accounts are rate limited far more tightly than real ones, and
 # the venue rejects the order outright rather than queuing it.
 SETTLE_SECONDS = {'vps': 1.0, 'prod': 0.2}
+
+# Minimum wall time between any two calls, whichever thread makes them.
+# The SDK's own throttle sleeps inside the calling thread, which orders
+# nothing when the settle worker and the main thread are both calling;
+# a paper account answers EGW00201 to the second call. Observed on a
+# real run while polling two orders.
+MIN_CALL_INTERVAL = {'vps': 0.7, 'prod': 0.15}
 
 
 def env_dv_for(svr):
@@ -263,7 +271,8 @@ class KisGateway:
         functions,
         auth,
         settle_seconds=1.0,
-        sleep=None
+        sleep=None,
+        min_call_interval=0.0
     ):
         self.env_dv = env_dv
         self.cano = cano
@@ -272,6 +281,9 @@ class KisGateway:
         self.auth = auth
         self.settle_seconds = settle_seconds
         self.sleep = sleep if sleep is not None else time.sleep
+        self.min_call_interval = min_call_interval
+        self._call_lock = threading.Lock()
+        self._last_call_at = None
 
     @classmethod
     def connect(cls, svr='vps', ota_home=None, sleep=None):
@@ -311,18 +323,34 @@ class KisGateway:
             functions=fn,
             auth=ka,
             settle_seconds=SETTLE_SECONDS.get(svr, 1.0),
-            sleep=sleep
+            sleep=sleep,
+            min_call_interval=MIN_CALL_INTERVAL.get(svr, 0.7)
         )
 
     def _throttle(self):
         """
-        Pause between calls, using the SDK's own per-server delay.
+        Space this call from the previous one, whoever made it.
 
-        The SDK applies this only to paginated follow-ups, but a paper
-        account hits the per-second limit with ordinary consecutive
-        calls, so it goes in front of every one.
+        Two mechanisms, because they solve different problems. The
+        SDK's own delay is per-server and lives inside the calling
+        thread. That orders nothing between threads, and the settle
+        phase polls from a worker while the main thread may also be
+        calling -- so a lock and a monotonic clock enforce a minimum
+        gap across all callers.
+
+        This is the gateway thread safety NFR-8 required and the first
+        real run demanded: polling two orders produced EGW00201, the
+        per-second limit, on a paper account.
         """
-        self.auth.smart_sleep()
+        with self._call_lock:
+            if self.min_call_interval > 0.0:
+                now = time.monotonic()
+                if self._last_call_at is not None:
+                    waited = now - self._last_call_at
+                    if waited < self.min_call_interval:
+                        self.sleep(self.min_call_interval - waited)
+                self._last_call_at = time.monotonic()
+            self.auth.smart_sleep()
 
     # -- BrokerClient Protocol -------------------------------------------
 

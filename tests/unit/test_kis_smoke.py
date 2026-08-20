@@ -69,25 +69,77 @@ def test_the_rebalance_stage_refuses_without_explicit_consent():
         smoke.stage_rebalance(_args(place_orders=False))
 
 
-def test_the_budget_is_expressed_as_a_fraction_of_equity():
+def test_the_budget_survives_the_sizer_normalising_the_weights():
     """
-    Tests that a cash budget becomes weights the sizers understand.
+    Tests the defect the first real run exposed.
+
+    The sizer rescales the weight vector to sum to one, so scaling
+    weights down does not reduce exposure — asking for a million won
+    produced two orders worth 237 million each. What does bound it is
+    the cash buffer, and this is where that is computed.
     """
-    weights = smoke.scaled_weights(
-        ['EQ:005930', 'EQ:000660'], budget=1000000.0, total_equity=10000000.0
+    weights, cash_buffer, _ = smoke.smoke_plan(
+        ['EQ:005930', 'EQ:000660'], budget=1000000.0,
+        total_equity=500000000.0, holdings={}
     )
-    assert weights == {'EQ:005930': 0.05, 'EQ:000660': 0.05}
-    assert sum(weights.values()) == pytest.approx(0.1)
+    assert weights == {'EQ:005930': 500000.0, 'EQ:000660': 500000.0}
+
+    # What the sizer will actually deploy, by its own arithmetic.
+    deployed = 500000000.0 * (1.0 - cash_buffer)
+    assert deployed == pytest.approx(1000000.0)
+
+    # And after normalisation each name still receives its half.
+    total = sum(weights.values())
+    for value in weights.values():
+        assert deployed * (value / total) == pytest.approx(500000.0)
 
 
-def test_a_budget_larger_than_the_account_is_capped():
+def test_holdings_outside_the_universe_are_carried_not_sold():
     """
-    Tests that an oversized budget means 'all of it', not leverage.
+    Tests the other defect the first run exposed.
+
+    Portfolio construction zeroes anything absent from the target, so a
+    two-name smoke against an account holding other things liquidates
+    them — which is exactly what happened. Held names are carried at
+    their current value, which sizes to no trade.
     """
-    weights = smoke.scaled_weights(
-        ['EQ:005930', 'EQ:000660'], budget=99999999.0, total_equity=1000000.0
+    holdings = {'EQ:069500': 433540.0, 'EQ:360750': 560889.0}
+    weights, cash_buffer, universe = smoke.smoke_plan(
+        ['EQ:005930'], budget=1000000.0, total_equity=500000000.0,
+        holdings=holdings
     )
-    assert sum(weights.values()) == pytest.approx(1.0)
+
+    assert 'EQ:069500' in universe and 'EQ:360750' in universe
+    deployed = 500000000.0 * (1.0 - cash_buffer)
+    total = sum(weights.values())
+    for symbol, value in holdings.items():
+        # Target equals current value, so the increment is nothing.
+        assert deployed * (weights[symbol] / total) == pytest.approx(value)
+
+
+def test_a_held_name_inside_the_universe_is_topped_up_by_the_budget():
+    """
+    Tests that trading a name already held adds the budget to it
+    rather than replacing the position.
+    """
+    weights, _, universe = smoke.smoke_plan(
+        ['EQ:005930'], budget=1000000.0, total_equity=500000000.0,
+        holdings={'EQ:005930': 200000.0}
+    )
+    assert weights == {'EQ:005930': 1200000.0}
+    assert universe == ['EQ:005930']
+
+
+def test_a_budget_larger_than_the_account_is_refused():
+    """
+    Tests that an oversized budget stops rather than silently
+    deploying everything.
+    """
+    with pytest.raises(smoke.SmokeError, match='Lower --budget'):
+        smoke.smoke_plan(
+            ['EQ:005930'], budget=99999999.0, total_equity=1000000.0,
+            holdings={}
+        )
 
 
 def test_an_empty_account_is_refused_rather_than_divided_by():
@@ -96,7 +148,9 @@ def test_an_empty_account_is_refused_rather_than_divided_by():
     of a division error.
     """
     with pytest.raises(smoke.SmokeError, match='no equity'):
-        smoke.scaled_weights(['EQ:005930'], budget=1000.0, total_equity=0.0)
+        smoke.smoke_plan(
+            ['EQ:005930'], budget=1000.0, total_equity=0.0, holdings={}
+        )
 
 
 def test_the_universe_is_two_liquid_names_by_default():
