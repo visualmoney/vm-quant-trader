@@ -4,7 +4,7 @@
 __pycache__
 cover
 
-# downloaded CSV price data (QSTRADER_CSV_DATA_DIR)
+# downloaded CSV price data (VMTRADER_CSV_DATA_DIR)
 # leading slash so that the tracked vmtrader/data package is not ignored
 /data/
 
