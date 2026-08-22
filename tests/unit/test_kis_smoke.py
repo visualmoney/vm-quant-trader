@@ -5,6 +5,7 @@ and where are tested here rather than discovered on an account.
 
 import argparse
 import importlib.util
+import logging
 import os
 import sys
 
@@ -217,3 +218,48 @@ def test_the_session_clock_does_not_jump_to_a_future_session():
         pd.Timestamp('2026-08-20 07:00:00')
     )
     assert session.date() == pd.Timestamp('2026-08-19').date()
+
+
+def test_the_drain_samples_can_be_turned_on_from_the_command_line(
+    monkeypatch
+):
+    """
+    Tests that an operator can actually collect the settle samples.
+
+    They are logged at debug, which reaches nothing by default -- a
+    library configures no handlers. So the samples exist only insofar
+    as the entry point offers a way to raise the level.
+    """
+    root = logging.getLogger()
+    level_before = root.level
+    handlers_before = list(root.handlers)
+    seen = []
+    monkeypatch.setitem(smoke.STAGES, 'connect', seen.append)
+
+    try:
+        assert smoke.main(['--stage', 'connect', '--log-level', 'debug']) == 0
+        assert root.level == logging.DEBUG
+        assert seen[0].log_level == 'debug'
+    finally:
+        root.setLevel(level_before)
+        root.handlers[:] = handlers_before
+
+
+def test_the_command_line_is_quiet_unless_asked(monkeypatch):
+    """
+    Tests that the samples are opt-in.
+
+    A cron run that logged a line per polling round would bury the
+    operational output it exists to carry.
+    """
+    root = logging.getLogger()
+    level_before = root.level
+    handlers_before = list(root.handlers)
+    monkeypatch.setitem(smoke.STAGES, 'connect', lambda args: None)
+
+    try:
+        assert smoke.main(['--stage', 'connect']) == 0
+        assert root.level == logging.WARNING
+    finally:
+        root.setLevel(level_before)
+        root.handlers[:] = handlers_before

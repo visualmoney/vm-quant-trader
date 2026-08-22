@@ -1,4 +1,6 @@
 import datetime
+import logging
+import re
 
 import pandas as pd
 import pytest
@@ -593,3 +595,147 @@ def test_update_can_be_forced(tmp_path):
     )
     broker.update(broker.current_dt, force=True)
     assert client.reports_served != []
+
+
+class _StubbornWorker:
+    """
+    A worker that reports it could not be stopped.
+
+    A real one only does this when a poll is wedged inside the venue
+    SDK, which a unit test cannot arrange: the drain barrier would
+    block before the shutdown is ever reached.
+    """
+
+    def __init__(self, **kwargs):
+        self.stop_timeout = 'never called'
+
+    def start(self):
+        pass
+
+    def post_task(self, task):
+        pass
+
+    def join_tasks(self, timeout=None):
+        return True
+
+    def stop(self, timeout=None):
+        self.stop_timeout = timeout
+        return False
+
+
+def test_settle_reports_a_worker_that_would_not_stop(
+    tmp_path, monkeypatch, capsys
+):
+    """
+    Tests that a settlement whose worker outlives the shutdown says so.
+
+    The stall cannot be cured from inside the process, so the point is
+    that it is named: a cycle that ends with a thread still polling
+    must not read as a clean exit in the log.
+    """
+    stub = _StubbornWorker()
+    monkeypatch.setattr(
+        'vmtrader.broker.kis_broker.TaskQueueWorker', lambda **kw: stub
+    )
+    settings.set_print_events(True)
+
+    client = FakeClient()
+    broker = _broker(client, tmp_path)
+    booked = broker.settle(
+        deadline=pd.Timestamp('2026-08-20 11:00:00'), shutdown_timeout=0.5
+    )
+
+    assert booked == 0
+    assert stub.stop_timeout == 0.5
+    assert 'did not stop within 0.5s' in capsys.readouterr().out
+
+
+class _SlowDrainWorker:
+    """
+    A worker whose first drain check reports the round unfinished.
+
+    Real slowness cannot be arranged here without spending the wall
+    clock the heartbeat is derived from, so the timing is faked and the
+    tasks run inline: what the test is about is what the broker does
+    with the answer, not how long it waited for it.
+    """
+
+    def __init__(self, **kwargs):
+        self.timeouts = []
+
+    def start(self):
+        pass
+
+    def post_task(self, task):
+        task['runnable'](task)
+
+    def join_tasks(self, timeout=None):
+        self.timeouts.append(timeout)
+        return timeout is None
+
+    def stop(self, timeout=None):
+        return True
+
+
+def test_a_slow_drain_is_reported_but_still_waited_out(
+    tmp_path, monkeypatch, capsys
+):
+    """
+    Tests that a round which outruns the heartbeat is named in the log
+    and then waited for anyway.
+
+    The barrier is what gives the portfolio a single writer, so it is
+    never abandoned on a timeout -- the timeout only decides when to
+    say something. The interval is a share of the remaining budget, so
+    an hour of budget reports after fifteen minutes and a nearly spent
+    one reports sooner.
+    """
+    stub = _SlowDrainWorker()
+    monkeypatch.setattr(
+        'vmtrader.broker.kis_broker.TaskQueueWorker', lambda **kw: stub
+    )
+    settings.set_print_events(True)
+
+    client = FakeClient(price=10000.0)
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+    booked = broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert booked == 1
+    holding = broker.get_portfolio_as_dict(broker.account_id)['EQ:005930']
+    assert holding['quantity'] == 10
+    assert stub.timeouts == [900.0, None]
+    assert 'has not drained in 900s' in capsys.readouterr().out
+
+
+def test_each_settle_round_leaves_a_drain_sample(tmp_path, caplog):
+    """
+    Tests that every round records what it would take to size the
+    timeouts from measurement.
+
+    Both the heartbeat's share of the budget and the gateway's HTTP
+    limits were chosen without observation. Neither can be replaced by
+    a measured figure unless the rounds say how long they actually
+    took, so the sample carries the order count alongside the elapsed
+    time -- a round is slow because of how many orders it polls.
+    """
+    client = FakeClient(price=10000.0)
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+
+    with caplog.at_level(logging.DEBUG, logger='vmtrader.broker.kis_broker'):
+        broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    samples = [
+        record.getMessage() for record in caplog.records
+        if record.getMessage().startswith('settle drain')
+    ]
+    assert len(samples) == 1
+    assert 'orders=1' in samples[0]
+    assert 'heartbeat=900.0' in samples[0]
+    assert 'overran=False' in samples[0]
+    assert re.search(r'elapsed=\d+\.\d{3}', samples[0])

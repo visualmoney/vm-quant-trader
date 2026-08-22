@@ -28,6 +28,7 @@ import os
 import sys
 import threading
 import time
+import warnings
 
 
 MARKET_ORDER = '01'
@@ -49,6 +50,17 @@ SETTLE_SECONDS = {'vps': 1.0, 'prod': 0.2}
 # a paper account answers EGW00201 to the second call. Observed on a
 # real run while polling two orders.
 MIN_CALL_INTERVAL = {'vps': 0.7, 'prod': 0.15}
+
+# Connect and read limits for every call the SDK makes. The SDK issues
+# 'requests.get'/'requests.post' with no timeout of its own, so without
+# this a stalled socket never returns: the settle worker's poll never
+# finishes, its drain barrier never lifts, and a non-daemon thread holds
+# the process open past the cron slot. Read is set well above a normal
+# answer (under a second) and below the broker's shutdown grace, so the
+# worst single poll -- one connect plus one read, since the fill enquiry
+# is never retried -- lands inside it. Retried queries multiply this by
+# their attempts, but none of those run on the settle worker.
+HTTP_TIMEOUT = (5.0, 15.0)
 
 # Shared by every gateway in the process, because the venue's limit is
 # too. A per-instance throttle spaces one object's calls and nothing
@@ -180,6 +192,83 @@ OTA_PATH_CANDIDATES = (
     os.path.join('examples_user', 'domestic_stock'),
     'examples_llm',
 )
+
+
+class _TimeoutRequests:
+    """
+    Stand in for the SDK's 'requests' module and supply a timeout.
+
+    The SDK is a clone this repository does not own, so its call sites
+    cannot be edited. Replacing the module object it looked up leaves
+    every call site untouched and still bounds the wait.
+
+    Parameters
+    ----------
+    module : `module`
+        The real 'requests' module.
+    timeout : `tuple`
+        The (connect, read) limit to pass when a caller gives none.
+    """
+
+    def __init__(self, module, timeout):
+        self._module = module
+        self._timeout = timeout
+
+    def __getattr__(self, name):
+        return getattr(self._module, name)
+
+    def get(self, *args, **kwargs):
+        kwargs.setdefault('timeout', self._timeout)
+        return self._module.get(*args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        kwargs.setdefault('timeout', self._timeout)
+        return self._module.post(*args, **kwargs)
+
+
+def impose_http_timeout(module, timeout=HTTP_TIMEOUT):
+    """
+    Bound every HTTP call the SDK module will make.
+
+    Call this before authenticating, since issuing the token is itself
+    a request and would otherwise be the one call left unbounded.
+
+    Parameters
+    ----------
+    module : `module`
+        The SDK module whose 'requests' attribute to replace.
+    timeout : `tuple`, optional
+        The (connect, read) limit in seconds.
+
+    A module that turns out to have no 'requests' to replace warns
+    rather than failing quietly. Silence there would be the worst
+    outcome: the gateway would go on working, and the first sign that
+    nothing is bounded any more would be a cron slot that never ends.
+
+    Returns
+    -------
+    `Boolean`
+        Whether a replacement was installed. False when the module
+        already carries a bounded one, and False with a warning when it
+        exposes nothing to bound.
+    """
+    existing = getattr(module, 'requests', None)
+    if isinstance(existing, _TimeoutRequests):
+        return False
+    if existing is None:
+        warnings.warn(
+            "%s exposes no 'requests' module, so its HTTP calls are "
+            "left unbounded: a stalled socket never returns, the settle "
+            "worker waiting on it never finishes, and the process "
+            "outlives its cron slot. The SDK clone has most likely "
+            "moved to a session or another client -- bound that "
+            "instead." % getattr(module, '__name__', type(module).__name__),
+            RuntimeWarning,
+            stacklevel=2
+        )
+        return False
+    module.requests = _TimeoutRequests(existing, timeout)
+    return True
 
 
 def add_ota_to_path(ota_home=None):
@@ -319,6 +408,7 @@ class KisGateway:
         import kis_auth as ka
         import domestic_stock_functions as fn
 
+        impose_http_timeout(ka)
         ka.auth(svr=svr)
         trenv = ka.getTREnv()
         return cls(

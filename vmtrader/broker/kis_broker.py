@@ -20,7 +20,9 @@ answers, and a confirmation that arrives late carrying an earlier
 timestamp would otherwise raise straight out of the portfolio.
 """
 
+import logging
 import threading
+import time
 
 import numpy as np
 import pandas as pd
@@ -36,6 +38,8 @@ from vmtrader.broker.kis.worker import TaskQueueWorker
 from vmtrader.broker.portfolio.portfolio import Portfolio
 from vmtrader.broker.transaction.transaction import Transaction
 from vmtrader import settings
+
+logger = logging.getLogger(__name__)
 
 
 class KisBroker(Broker):
@@ -617,7 +621,8 @@ class KisBroker(Broker):
             self.portfolios[fill['portfolio_id']].transact_asset(txn)
         return len(pending)
 
-    def settle(self, deadline, poll_interval=0.0, sleep=None):
+    def settle(self, deadline, poll_interval=0.0, sleep=None,
+               shutdown_timeout=30.0):
         """
         Collect fills for the open orders, within a time budget.
 
@@ -629,6 +634,12 @@ class KisBroker(Broker):
         Polling runs on a worker thread so that the main thread stays
         free to watch the kill switch and the deadline.
 
+        The drain barrier before each booking is never abandoned, since
+        it is what gives the portfolio a single writer. It is only
+        broken into to report a round that is taking longer than a
+        share of the remaining budget, so that a wedged poll is named
+        in the log rather than passing as a quiet cycle.
+
         Parameters
         ----------
         deadline : `pd.Timestamp`
@@ -637,6 +648,13 @@ class KisBroker(Broker):
             Seconds to wait between rounds.
         sleep : `callable`, optional
             Injected sleep, so tests need not spend real time.
+        shutdown_timeout : `float`, optional
+            Seconds to wait for the fill worker to end. Sized from what
+            the gateway allows one call: a connect and a read, with the
+            fill enquiry never retried, so a worker still running after
+            this has stalled somewhere no timeout reaches. Reported
+            rather than enforced -- the point is that the stall is
+            named in the log instead of passing as a normal exit.
 
         Returns
         -------
@@ -658,13 +676,38 @@ class KisBroker(Broker):
                     break
 
                 done = []
-                for order_no in list(self.open_orders):
+                posted = list(self.open_orders)
+                round_started = time.monotonic()
+                for order_no in posted:
                     worker.post_task({
                         'runnable': self._poll_task,
                         'order_no': order_no,
                         'done': done
                     })
-                worker.join_tasks()
+                # 드레인은 끝까지 기다린다 -- 이 배리어가 곧 회계의 단일
+                # 작성자 규율이다(ADR-0008). 다만 남은 예산에 비례한 간격으로
+                # 한 번 짚어, 멈춘 폴이 사이클을 조용히 먹는 일이 없게 한다.
+                # 예산이 한 시간이면 첫 짚음은 15분, 마감이 가까울수록 짧아진다.
+                heartbeat = max(
+                    1.0, (deadline - self._now()).total_seconds() / 4
+                )
+                overran = not worker.join_tasks(timeout=heartbeat)
+                if overran:
+                    self._log(
+                        'Fill polling has not drained in %.0fs; still '
+                        'waiting.' % heartbeat
+                    )
+                    worker.join_tasks()
+
+                # 라운드마다 남긴다. 하트비트의 1/4도, 게이트웨이의 (5, 15)도
+                # 관측 없이 고른 값이라, 이 기록이 쌓여야 실측 분포로 바꿀 수
+                # 있다. debug 인 것은 운용 로그가 아니라 표본이기 때문이다.
+                logger.debug(
+                    'settle drain orders=%d elapsed=%.3f heartbeat=%.1f '
+                    'overran=%s',
+                    len(posted), time.monotonic() - round_started,
+                    heartbeat, overran
+                )
 
                 booked += self._drain_fill_buffer()
                 for order_no in done:
@@ -673,7 +716,11 @@ class KisBroker(Broker):
                 if self.open_orders:
                     sleeper(poll_interval)
         finally:
-            worker.stop()
+            if not worker.stop(timeout=shutdown_timeout):
+                self._log(
+                    'Fill worker did not stop within %ss; a poll is '
+                    'still running.' % shutdown_timeout
+                )
             self._worker = None
             booked += self._drain_fill_buffer()
 

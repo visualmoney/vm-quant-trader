@@ -8,6 +8,7 @@ than the vendor's.
 import importlib.util
 import os
 import sys
+import warnings
 
 import pytest
 
@@ -578,3 +579,114 @@ def test_spacing_is_disabled_by_default_for_injected_gateways():
     gw.get_price('EQ:005930')
     gw.get_price('EQ:005930')
     assert slept == []
+
+
+class FakeRequests:
+    """
+    A stand-in for the 'requests' module that records what it was given.
+    """
+
+    def __init__(self):
+        self.calls = []
+        self.Session = 'untouched'
+
+    def get(self, url, **kwargs):
+        self.calls.append(('get', url, kwargs))
+        return 'ok'
+
+    def post(self, url, **kwargs):
+        self.calls.append(('post', url, kwargs))
+        return 'ok'
+
+
+class FakeSdkModule:
+    """
+    A stand-in for the vendor module whose 'requests' gets replaced.
+    """
+
+    def __init__(self):
+        self.requests = FakeRequests()
+
+
+def test_the_sdk_gets_a_timeout_it_does_not_set_itself():
+    """
+    Tests that every call the vendor makes carries a limit.
+
+    The SDK calls 'requests' with no timeout, so a stalled socket would
+    never return: the settle worker's poll would not finish, its drain
+    barrier would not lift, and a non-daemon thread would hold the
+    process open past its cron slot.
+    """
+    module = FakeSdkModule()
+    real = module.requests
+
+    assert gateway.impose_http_timeout(module) is True
+    module.requests.get('https://kis/uapi')
+    module.requests.post('https://kis/uapi', data='{}')
+
+    assert [call[2]['timeout'] for call in real.calls] == [
+        gateway.HTTP_TIMEOUT, gateway.HTTP_TIMEOUT
+    ]
+    assert module.requests.Session == 'untouched'
+
+
+def test_a_timeout_the_caller_chose_is_left_alone():
+    """
+    Tests that the limit is a floor under callers, not an override.
+    """
+    module = FakeSdkModule()
+    real = module.requests
+    gateway.impose_http_timeout(module)
+
+    module.requests.get('https://kis/uapi', timeout=1.0)
+
+    assert real.calls[0][2]['timeout'] == 1.0
+
+
+def test_imposing_the_timeout_again_is_a_no_op():
+    """
+    Tests that a second pass does not wrap the wrapper.
+
+    Two gateways in one process import the same module object, and a
+    wrapper around a wrapper would make the failure harder to read
+    without bounding anything further.
+    """
+    module = FakeSdkModule()
+    assert gateway.impose_http_timeout(module) is True
+    wrapper = module.requests
+
+    assert gateway.impose_http_timeout(module) is False
+    assert module.requests is wrapper
+
+
+def test_a_module_without_requests_says_so_out_loud():
+    """
+    Tests that a shim with nothing to bind warns instead of passing.
+
+    This is what a vendor clone moving to a session or another client
+    would look like. Going quiet there is the worst outcome available:
+    the gateway keeps working, and the first sign that no call is
+    bounded any more is a cron slot that never ends.
+    """
+    class Bare:
+        pass
+
+    module = Bare()
+    with pytest.warns(RuntimeWarning, match='unbounded'):
+        assert gateway.impose_http_timeout(module) is False
+    assert not hasattr(module, 'requests')
+
+
+def test_a_second_pass_does_not_warn():
+    """
+    Tests that the benign case stays quiet.
+
+    Two gateways in one process bind the same module, and a warning on
+    the second would train the operator to ignore the first.
+    """
+    module = FakeSdkModule()
+    gateway.impose_http_timeout(module)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        assert gateway.impose_http_timeout(module) is False
