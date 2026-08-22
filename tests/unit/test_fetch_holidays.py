@@ -96,7 +96,9 @@ def test_absent_credentials_say_where_they_belong(tmp_path):
         )
 
 
-def test_dates_past_the_requested_range_do_not_widen_the_coverage(tmp_path):
+def test_dates_past_the_requested_range_do_not_widen_the_coverage(
+    tmp_path, monkeypatch
+):
     """
     Tests that the file cannot claim to speak for days it skipped.
 
@@ -104,6 +106,12 @@ def test_dates_past_the_requested_range_do_not_widen_the_coverage(tmp_path):
     covered while dropping their holidays would produce a calendar that
     reports, say, Labour Day as a trading day — and the range check
     would wave it through, because the file says it covers that date.
+
+    The SDK stands in as two modules in 'sys.modules', so putting a
+    clone on the import path has nothing left to do here. Left in, it
+    decides the test on whether a directory happens to sit beside the
+    checkout -- which is why this passed on a developer's machine and
+    failed on every CI runner.
     """
     import datetime
 
@@ -132,6 +140,22 @@ def test_dates_past_the_requested_range_do_not_widen_the_coverage(tmp_path):
 
         def getTREnv(self):
             raise AssertionError('not needed')
+
+    scripts_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__)
+        ))),
+        'scripts'
+    )
+    monkeypatch.syspath_prepend(scripts_dir)
+    # 이 파일이 아니라 sys.modules 에 등록된 사본을 고쳐야 한다. 게이트웨이
+    # 테스트가 자기 사본을 같은 이름으로 올려두므로, 여기서 따로 적재하면
+    # fetch() 가 집는 객체와 다른 것을 고치게 된다.
+    import kis_gateway
+
+    monkeypatch.setattr(
+        kis_gateway, 'add_ota_to_path', lambda ota_home=None: None
+    )
 
     venue, auth = OneShotVenue(), Auth()
     sys.modules['domestic_stock_functions'] = venue
