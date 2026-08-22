@@ -26,6 +26,7 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import sys
 
@@ -578,10 +579,24 @@ def main(argv=None):
         help='Delay between fill polls. The venue answers EGW00201 to '
              'eager polling on a paper account.'
     )
+    parser.add_argument(
+        '--log-level', default='warning',
+        choices=['debug', 'info', 'warning', 'error'],
+        help="Python logging level. 'debug' turns on the per-round "
+             'settle drain samples, which is how the poll timings get '
+             'measured instead of guessed.'
+    )
     parser.add_argument('--ledger', default=DEFAULT_LEDGER)
     parser.add_argument('--kill-switch', default=DEFAULT_KILL_SWITCH)
     args = parser.parse_args(argv)
 
+    # 레벨은 basicConfig 인자가 아니라 따로 세운다. basicConfig 는 루트에
+    # 핸들러가 이미 있으면 아무것도 하지 않으므로, 그 경우 레벨 인자까지
+    # 조용히 무시된다.
+    logging.basicConfig(
+        format='%(asctime)s %(levelname)s %(name)s %(message)s'
+    )
+    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
     settings.set_print_events(True)
     print('== stage: %s ==' % args.stage)
     try:

@@ -99,7 +99,9 @@ def fetch(svr='prod', days=DEFAULT_DAYS, ota_home=None, start=None):
         The calendar payload, ready to serialise.
     """
     sys.path.insert(0, os.path.join(REPO_ROOT, 'scripts'))
-    from kis_gateway import _rows, add_ota_to_path, env_dv_for
+    from kis_gateway import (
+        _rows, add_ota_to_path, env_dv_for, impose_http_timeout
+    )
 
     env_dv_for(svr)
     add_ota_to_path(ota_home)
@@ -107,6 +109,7 @@ def fetch(svr='prod', days=DEFAULT_DAYS, ota_home=None, start=None):
     import kis_auth as ka
     import domestic_stock_functions as fn
 
+    impose_http_timeout(ka)
     ka.auth(svr=svr)
 
     begin = start or datetime.date.today()
