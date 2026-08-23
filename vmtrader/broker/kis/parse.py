@@ -11,15 +11,21 @@ sizer, and silently sizing against zero is how a position runs away, so
 an absent price raises rather than defaults.
 """
 
-from vmtrader.broker.kis.client import AccountBalance, Holding, OrderReport
+from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
+from vmtrader.broker.live.errors import VenueParseError
 
 
 SYMBOL_PREFIX = 'EQ:'
 
 
-class KisParseError(ValueError):
+class KisParseError(VenueParseError):
     """
     Raised when a KIS response cannot be turned into an engine value.
+
+    Subclasses the venue-neutral VenueParseError so that a caller
+    handling any venue's malformed response need not name KIS, while
+    one that only cares about KIS still can. VenueParseError inherits
+    ValueError, which this class was raised as before.
     """
 
 

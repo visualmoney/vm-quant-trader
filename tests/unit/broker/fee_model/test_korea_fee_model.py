@@ -55,3 +55,49 @@ def test_sign_of_consideration_does_not_decide_the_side():
     assert fee_model.calc_total_cost(
         'EQ:005930', -100, 1000000.0
     ) == pytest.approx(1800.0)
+
+
+def test_a_tax_exempt_asset_pays_commission_but_no_tax():
+    """
+    Tests that a sale of a declared-exempt asset carries no tax.
+
+    A domestic ETF is a beneficiary certificate rather than a share, so
+    its sale is outside the securities transaction tax entirely. The
+    engine cannot tell one from a share -- both are six digits -- so
+    the caller names them, and getting this wrong for an ETF-only
+    portfolio does not misprice the tax, it charges the whole of a tax
+    that is not owed.
+    """
+    fm = KoreaStockFeeModel(
+        commission_pct=0.00015,
+        tax_pct=0.0018,
+        tax_exempt_assets={'EQ:069500'}
+    )
+    consideration = 1000000.0
+
+    # The exempt ETF: commission only.
+    assert fm.calc_total_cost(
+        'EQ:069500', -10, consideration
+    ) == pytest.approx(0.00015 * consideration)
+
+    # A share, same size and side: commission plus tax.
+    assert fm.calc_total_cost(
+        'EQ:005930', -10, consideration
+    ) == pytest.approx((0.00015 + 0.0018) * consideration)
+
+    # Buying is untaxed either way, so exemption changes nothing there.
+    assert fm.calc_total_cost(
+        'EQ:069500', 10, consideration
+    ) == fm.calc_total_cost('EQ:005930', 10, consideration)
+
+
+def test_nothing_is_exempt_by_default():
+    """
+    Tests that the exemption is opt-in.
+
+    Adding the parameter must not quietly stop charging tax for every
+    caller that already existed.
+    """
+    fm = KoreaStockFeeModel(commission_pct=0.0, tax_pct=0.0018)
+    assert fm.tax_exempt_assets == frozenset()
+    assert fm.calc_total_cost('EQ:069500', -10, 1000.0) == pytest.approx(1.8)

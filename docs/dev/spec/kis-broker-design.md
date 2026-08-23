@@ -10,6 +10,8 @@
 | 설계 결정 | [ADR-0001 ~ ADR-0009](../adr/) — §4 참조 (0002는 폐기됨) |
 | 참조 구현 | `vm-quant-lab` — `packages/adapters/live/`, `packages/brokers/kis/` (가동 중) |
 
+> **개명 안내 (2026-08-23, v0.3.17 · [ADR-0015](../adr/0015-venue-neutral-live-package.md))**: 본 문서가 쓴 이름들이 바뀌었다. `KisBroker` → **`LiveBroker`**, `broker/kis_broker.py` → **`broker/live_broker.py`**, 그리고 `broker/kis/`의 `client`·`worker`·`guards`·`ledger`·`reconcile` → **`broker/live/`** (벤더 고유한 `parse.py`만 `broker/kis/`에 남는다). 라이브 인프라가 venue 중립임이 드러나 두 번째 증권사를 게이트웨이 하나로 붙일 수 있게 하려는 조치이며, 아래 본문의 설계 내용 자체는 유효하다 — **이름과 경로만 위 대응표로 읽으면 된다.** NFR-3이 요구하던 import 경계 검사는 `tests/unit/test_vendor_import_boundary.py`로 구현되었다.
+
 ---
 
 ## 1. 요약

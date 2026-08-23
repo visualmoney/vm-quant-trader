@@ -9,6 +9,12 @@ Fills are recorded against a key derived from the order number and the
 cumulative filled quantity. The venue reports cumulative totals with no
 fill identifier, so the same fill is seen on every poll; the key makes
 booking it twice impossible rather than merely unlikely.
+
+A ledger also carries the identity of the deployment that wrote it:
+which venue, which account, and whether the money was real. Without
+that, nothing could tell a paper ledger from a real one, and the
+promotion check read whichever file it was pointed at and trusted
+the operator that it was the paper one.
 """
 
 import sqlite3
@@ -21,6 +27,21 @@ REJECTED = 'REJECTED'
 STALE = 'STALE'
 
 TERMINAL_STATES = (FILLED, REJECTED, STALE)
+
+PAPER = 'paper'
+REAL = 'real'
+UNKNOWN = 'unknown'
+
+
+class LedgerIdentityConflict(Exception):
+    """
+    Raised when a ledger is opened by a deployment it does not belong to.
+
+    Mixing a paper run and a real run in one file corrupts the only
+    evidence the promotion check has, and it corrupts it silently:
+    both runs write valid rows. Refusing at the point of the second
+    stamp is the only place the mistake is still cheap.
+    """
 
 
 class OrderLedger:
@@ -76,16 +97,109 @@ class OrderLedger:
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS equity_curve (
                 recorded_at TEXT PRIMARY KEY,
-                total_equity REAL NOT NULL
+                total_equity REAL NOT NULL,
+                mode TEXT NOT NULL DEFAULT 'unknown'
             )
         """)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+        self._add_missing_columns()
         self.conn.commit()
+
+    def _add_missing_columns(self):
+        """
+        Bring a ledger written by an earlier version up to date.
+
+        'CREATE TABLE IF NOT EXISTS' does nothing to a table that
+        already exists, so a ledger from before the mode column was
+        added would keep its old shape and every insert naming the
+        column would fail. Existing rows take 'unknown', which is
+        honest: nothing recorded what they were.
+        """
+        columns = {
+            row['name']
+            for row in self.conn.execute('PRAGMA table_info(equity_curve)')
+        }
+        if 'mode' not in columns:
+            self.conn.execute(
+                "ALTER TABLE equity_curve ADD COLUMN mode TEXT NOT NULL "
+                "DEFAULT '%s'" % UNKNOWN
+            )
 
     def close(self):
         """
         Close this thread's connection.
         """
         self.conn.close()
+
+    def stamp_identity(self, venue, mode, account_id):
+        """
+        Record which deployment owns this ledger, or verify it matches.
+
+        Called once when a broker opens the ledger. The first call
+        writes the identity; every later call checks it and raises on a
+        disagreement, so a real-money session cannot append to a paper
+        ledger, nor the reverse. That is the whole point: the mistake
+        is silent otherwise, because both runs write valid rows.
+
+        Parameters
+        ----------
+        venue : `str`
+            The venue name, e.g. 'kis'.
+        mode : `str`
+            'paper' or 'real'.
+        account_id : `str`
+            The account the deployment trades.
+
+        Raises
+        ------
+        LedgerIdentityConflict
+            If the ledger already belongs to a different deployment.
+        """
+        identity = {'venue': venue, 'mode': mode, 'account_id': account_id}
+        existing = self.get_identity()
+
+        if existing is not None:
+            if existing != identity:
+                raise LedgerIdentityConflict(
+                    "Ledger '%s' belongs to venue=%s mode=%s account=%s, but "
+                    "was opened as venue=%s mode=%s account=%s. Use a "
+                    "separate ledger file per deployment; mixing them "
+                    "destroys the evidence the promotion check reads."
+                    % (
+                        self.path, existing['venue'], existing['mode'],
+                        existing['account_id'], venue, mode, account_id
+                    )
+                )
+            return
+
+        self.conn.executemany(
+            'INSERT INTO meta (key, value) VALUES (?, ?)',
+            sorted(identity.items())
+        )
+        self.conn.commit()
+
+    def get_identity(self):
+        """
+        Return the deployment identity recorded in this ledger.
+
+        Returns
+        -------
+        `dict{str: str}` or `None`
+            The identity, or None for a ledger written before
+            identities were recorded.
+        """
+        rows = self.conn.execute(
+            "SELECT key, value FROM meta WHERE key IN "
+            "('venue', 'mode', 'account_id')"
+        ).fetchall()
+        if len(rows) < 3:
+            return None
+        return {row['key']: row['value'] for row in rows}
 
     def record_intent(self, order_id, symbol, quantity, dt):
         """
@@ -207,7 +321,7 @@ class OrderLedger:
         self.conn.commit()
         return cursor.rowcount == 1
 
-    def record_equity(self, dt, total_equity):
+    def record_equity(self, dt, total_equity, mode=UNKNOWN):
         """
         Append a point to the equity curve.
 
@@ -220,11 +334,15 @@ class OrderLedger:
             The timestamp of the valuation.
         total_equity : `float`
             The account's total equity.
+        mode : `str`, optional
+            'paper' or 'real'. Stored per row as well as in the
+            meta table, so that a curve can be audited even if it
+            predates identity stamping or was assembled by hand.
         """
         self.conn.execute(
-            'INSERT OR REPLACE INTO equity_curve (recorded_at, total_equity) '
-            'VALUES (?, ?)',
-            (str(dt), total_equity)
+            'INSERT OR REPLACE INTO equity_curve '
+            '(recorded_at, total_equity, mode) VALUES (?, ?, ?)',
+            (str(dt), total_equity, mode)
         )
         self.conn.commit()
 

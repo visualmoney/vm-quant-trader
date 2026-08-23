@@ -1,6 +1,6 @@
 import pytest
 
-from vmtrader.broker.kis.guards import (
+from vmtrader.broker.live.guards import (
     KillSwitchEngaged, OrderLimitExceeded, SafetyGuard
 )
 

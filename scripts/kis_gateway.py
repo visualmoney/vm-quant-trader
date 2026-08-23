@@ -70,6 +70,35 @@ _CALL_LOCK = threading.Lock()
 _LAST_CALL_AT = None
 
 
+def mode_for(svr):
+    """
+    Return whether a server name means real money.
+
+    The engine cannot work this out: a paper account answers the same
+    endpoints with the same shapes. The gateway chose the server, so
+    the gateway is the only thing that knows, and it declares it on the
+    BrokerClient contract for the broker and the ledger to read.
+
+    Parameters
+    ----------
+    svr : `str`
+        Either 'vps' (paper) or 'prod' (real money).
+
+    Returns
+    -------
+    `str`
+        'paper' or 'real'.
+    """
+    if svr == 'vps':
+        return 'paper'
+    if svr == 'prod':
+        return 'real'
+    raise ValueError(
+        "Unknown KIS server '%s'. Use 'vps' for paper trading or 'prod' "
+        "for real money." % svr
+    )
+
+
 def env_dv_for(svr):
     """
     Derive the SDK's environment discriminator from the server name.
@@ -341,6 +370,12 @@ class KisGateway:
     takes already-resolved dependencies so that tests can drive the
     translation logic with fakes and no SDK present.
 
+    Declares 'venue' and 'mode' for the Protocol. 'mode' is derived
+    from 'env_dv' rather than passed separately, so that it cannot
+    disagree with the server actually dialled: there is one source
+    of truth for which account this is, and it is the one the SDK
+    authenticated against.
+
     Parameters
     ----------
     env_dv : `str`
@@ -357,7 +392,16 @@ class KisGateway:
         Extra pause before an order, on top of the throttle.
     sleep : `callable`, optional
         Injected sleep.
+
+    Attributes
+    ----------
+    venue : `str`
+        Always 'kis'.
+    mode : `str`
+        'paper' when env_dv is 'demo', 'real' otherwise.
     """
+
+    venue = 'kis'
 
     def __init__(
         self,
@@ -378,6 +422,7 @@ class KisGateway:
         self.settle_seconds = settle_seconds
         self.sleep = sleep if sleep is not None else time.sleep
         self.min_call_interval = min_call_interval
+        self.mode = 'paper' if env_dv == 'demo' else 'real'
 
     @classmethod
     def connect(cls, svr='vps', ota_home=None, sleep=None):

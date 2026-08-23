@@ -11,8 +11,8 @@ import sys
 import pandas as pd
 import pytest
 
-from vmtrader.broker.kis import ledger as ledger_states
-from vmtrader.broker.kis.ledger import OrderLedger
+from vmtrader.broker.live import ledger as ledger_states
+from vmtrader.broker.live.ledger import OrderLedger
 
 
 def _load():
@@ -36,16 +36,26 @@ checker = _load()
 
 
 def _ledger(tmp_path, days=25, orders=10, stale=0, orphans=0,
-            kill_switch=True, fills=True):
+            kill_switch=True, fills=True, mode='paper', stamp=True,
+            name='paper.db'):
     """
     Build a ledger that looks like a paper deployment's history.
+
+    'mode' and 'stamp' exist so that a test can produce the two
+    ledgers the checker must now refuse: one belonging to a real
+    deployment, and one that records no deployment at all.
     """
-    path = str(tmp_path / 'paper.db')
+    path = str(tmp_path / name)
     ledger = OrderLedger(path)
     dt = pd.Timestamp('2026-08-20 15:40:00')
 
+    if stamp:
+        ledger.stamp_identity('kis', mode, 'kis-etf-01')
+
     for day in range(days):
-        ledger.record_equity(dt + pd.Timedelta(days=day), 1000000.0 + day)
+        ledger.record_equity(
+            dt + pd.Timedelta(days=day), 1000000.0 + day, mode=mode
+        )
 
     for i in range(orders):
         order_id = 'o%d' % i
@@ -193,3 +203,68 @@ def test_manual_criteria_are_printed_and_never_auto_passed(capsys, tmp_path):
     for item in checker.MANUAL_CRITERIA:
         assert item.split('.')[0] in out
     assert 'still requires the manual list' in out
+
+
+def test_a_ledger_with_no_recorded_identity_cannot_be_promoted(tmp_path):
+    """
+    Tests that an unidentified ledger fails rather than passing.
+
+    The checker used to read whichever file it was handed and trust the
+    operator that it was the paper one. A ledger that cannot say what
+    it is has to fail, or every ledger written before identities
+    existed would pass this criterion for free.
+    """
+    path = _ledger(tmp_path, stamp=False, mode='unknown')
+    verdict = _verdicts(path)['ledger-is-paper']
+    assert not verdict.passed
+    assert 'no deployment identity' in verdict.detail
+
+
+def test_a_real_money_ledger_cannot_be_promoted(tmp_path):
+    """
+    Tests that a real deployment's history is not evidence for
+    promoting it.
+
+    Everything else in the ledger would look healthy; the point is that
+    it is a record of the account being promoted to, not of a rehearsal
+    for it.
+    """
+    path = _ledger(tmp_path, mode='real', name='real.db')
+    verdict = _verdicts(path)['ledger-is-paper']
+    assert not verdict.passed
+    assert 'mode=real' in verdict.detail
+
+
+def test_foreign_rows_in_a_paper_ledger_are_reported_as_mixed(tmp_path):
+    """
+    Tests that real rows inside a paper ledger fail the criterion.
+
+    The identity stamp prevents this happening through the engine, but
+    a hand-assembled or hand-edited file is not stopped by it, and the
+    row-level mode is what catches that.
+    """
+    path = _ledger(tmp_path)
+    ledger = OrderLedger(path)
+    ledger.record_equity(
+        pd.Timestamp('2026-09-30 15:40:00'), 1000000.0, mode='real'
+    )
+    ledger.close()
+
+    verdict = _verdicts(path)['ledger-is-paper']
+    assert not verdict.passed
+    assert 'mixed' in verdict.detail
+    assert '1 row(s) mode=real' in verdict.detail
+
+
+def test_a_paper_ledger_names_the_deployment_it_judged(tmp_path):
+    """
+    Tests that a pass says which account it looked at.
+
+    A verdict that does not name what it measured is the trust this
+    criterion replaces, only wearing a PASS.
+    """
+    verdict = _verdicts(_ledger(tmp_path))['ledger-is-paper']
+    assert verdict.passed
+    assert 'all mode=paper' in verdict.detail
+    assert 'venue=kis' in verdict.detail
+    assert 'account=kis-etf-01' in verdict.detail

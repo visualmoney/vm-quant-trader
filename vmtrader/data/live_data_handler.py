@@ -1,4 +1,4 @@
-from vmtrader.broker.kis.parse import KisParseError
+from vmtrader.broker.live.errors import PriceUnavailable
 
 
 class LiveDataHandler:
@@ -59,7 +59,7 @@ class LiveDataHandler:
 
         price = self.client.get_price(asset_symbol)
         if price is None or price <= 0.0:
-            raise KisParseError(
+            raise PriceUnavailable(
                 "No usable price for '%s'; refusing to size against it."
                 % asset_symbol
             )

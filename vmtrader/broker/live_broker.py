@@ -29,12 +29,12 @@ import pandas as pd
 
 from vmtrader.broker.broker import Broker
 from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
-from vmtrader.broker.kis import ledger as ledger_states
-from vmtrader.broker.kis.ledger import OrderLedger
-from vmtrader.broker.kis.guards import (
+from vmtrader.broker.live import ledger as ledger_states
+from vmtrader.broker.live.ledger import OrderLedger
+from vmtrader.broker.live.guards import (
     KillSwitchEngaged, OrderLimitExceeded, SafetyGuard
 )
-from vmtrader.broker.kis.worker import TaskQueueWorker
+from vmtrader.broker.live.worker import TaskQueueWorker
 from vmtrader.broker.portfolio.portfolio import Portfolio
 from vmtrader.broker.transaction.transaction import Transaction
 from vmtrader import settings
@@ -42,7 +42,7 @@ from vmtrader import settings
 logger = logging.getLogger(__name__)
 
 
-class KisBroker(Broker):
+class LiveBroker(Broker):
     """
     Trades Korean cash equities through a venue client.
 
@@ -58,10 +58,17 @@ class KisBroker(Broker):
         The venue. Injected, and never imported by the engine.
     ledger : `OrderLedger`
         The durable record of intent, submission and fills.
-    account_id : `str`
+    account_id : `str`, optional
         Identifier used for the single portfolio this broker holds.
+        Defaults to 'live'.
     base_currency : `str`, optional
         Account currency. Defaults to 'KRW'.
+    venue_name : `str`, optional
+        Names the venue in operational log lines and in the ledger
+        stamp. The class itself is venue-neutral, so the only thing
+        that would otherwise identify which broker an operator is
+        reading is the line prefix. Taken from the client's 'venue'
+        attribute when it has one; otherwise 'live'.
     fee_model : `FeeModel`, optional
         Used by the sizer to estimate costs. Actual fees come from the
         venue where it reports them.
@@ -88,8 +95,9 @@ class KisBroker(Broker):
         data_handler,
         client,
         ledger,
-        account_id='kis',
+        account_id='live',
         base_currency='KRW',
+        venue_name=None,
         fee_model=None,
         guard=None,
         clock=None,
@@ -104,6 +112,15 @@ class KisBroker(Broker):
         self.ledger = ledger
         self.account_id = account_id
         self.base_currency = base_currency
+        # The gateway knows which venue it dialled and whether the
+        # money is real; the engine cannot tell, because a paper
+        # account answers identically. Explicit arguments win, so a
+        # test double need not carry either.
+        self.venue_name = (
+            venue_name if venue_name is not None
+            else getattr(client, 'venue', 'live')
+        )
+        self.mode = getattr(client, 'mode', ledger_states.UNKNOWN)
         self.fee_model = fee_model if fee_model is not None else ZeroFeeModel()
         self.guard = guard if guard is not None else SafetyGuard()
         self.clock = clock if clock is not None else (lambda: self.current_dt)
@@ -131,6 +148,11 @@ class KisBroker(Broker):
         self._worker = None
 
         self.create_portfolio(account_id, account_id)
+        # Raises if this ledger already belongs to a different
+        # deployment, which is the only moment the mistake is cheap.
+        self.ledger.stamp_identity(
+            self.venue_name, self.mode, self.account_id
+        )
 
     def _open_thread_ledger(self):
         """
@@ -162,72 +184,6 @@ class KisBroker(Broker):
         if now < self.current_dt:
             return self.current_dt
         return now
-
-    # -- funding: unsupported -------------------------------------------
-
-    def _reject_funding(self, method):
-        """
-        Raise for a funding operation the venue does not offer.
-
-        Parameters
-        ----------
-        method : `str`
-            The method name, used in the message.
-        """
-        raise NotImplementedError(
-            "%s is not supported against a live account. The venue has no "
-            "transfer API, so moving cash locally would desynchronise the "
-            "engine from the account immediately. Fund the account with "
-            "the broker directly; the engine reads the balance." % method
-        )
-
-    def subscribe_funds_to_account(self, amount):
-        """
-        Not supported against a live account.
-
-        Parameters
-        ----------
-        amount : `float`
-            Ignored.
-        """
-        self._reject_funding('subscribe_funds_to_account')
-
-    def withdraw_funds_from_account(self, amount):
-        """
-        Not supported against a live account.
-
-        Parameters
-        ----------
-        amount : `float`
-            Ignored.
-        """
-        self._reject_funding('withdraw_funds_from_account')
-
-    def subscribe_funds_to_portfolio(self, portfolio_id, amount):
-        """
-        Not supported against a live account.
-
-        Parameters
-        ----------
-        portfolio_id : `str`
-            Ignored.
-        amount : `float`
-            Ignored.
-        """
-        self._reject_funding('subscribe_funds_to_portfolio')
-
-    def withdraw_funds_from_portfolio(self, portfolio_id, amount):
-        """
-        Not supported against a live account.
-
-        Parameters
-        ----------
-        portfolio_id : `str`
-            Ignored.
-        amount : `float`
-            Ignored.
-        """
-        self._reject_funding('withdraw_funds_from_portfolio')
 
     # -- portfolio ------------------------------------------------------
 
@@ -848,7 +804,8 @@ class KisBroker(Broker):
         both.
         """
         self.ledger.record_equity(
-            self._now(), self.get_account_total_equity()['master']
+            self._now(), self.get_account_total_equity()['master'],
+            mode=self.mode
         )
 
     # -- logging ---------------------------------------------------------
@@ -863,7 +820,10 @@ class KisBroker(Broker):
             The message to print.
         """
         if settings.PRINT_EVENTS:
-            print('(%s) - kis broker: %s' % (self.current_dt, message))
+            print(
+                '(%s) - %s broker: %s'
+                % (self.current_dt, self.venue_name, message)
+            )
 
     def _log_error(self, err):
         """

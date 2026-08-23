@@ -45,11 +45,11 @@ from vmtrader import settings  # noqa: E402
 from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel  # noqa: E402
 from vmtrader.asset.universe.static import StaticUniverse  # noqa: E402
 from vmtrader.broker.fee_model.korea_fee_model import KoreaStockFeeModel  # noqa: E402
-from vmtrader.broker.kis import ledger as ledger_states  # noqa: E402
-from vmtrader.broker.kis.guards import KillSwitchEngaged, SafetyGuard  # noqa: E402
-from vmtrader.broker.kis.ledger import OrderLedger  # noqa: E402
-from vmtrader.broker.kis.reconcile import reconcile  # noqa: E402
-from vmtrader.broker.kis_broker import KisBroker  # noqa: E402
+from vmtrader.broker.live import ledger as ledger_states  # noqa: E402
+from vmtrader.broker.live.guards import KillSwitchEngaged, SafetyGuard  # noqa: E402
+from vmtrader.broker.live.ledger import OrderLedger  # noqa: E402
+from vmtrader.broker.live.reconcile import reconcile  # noqa: E402
+from vmtrader.broker.live_broker import LiveBroker  # noqa: E402
 from vmtrader.data.live_data_handler import LiveDataHandler  # noqa: E402
 from vmtrader.exchange.krx_exchange import KrxExchange  # noqa: E402
 from vmtrader.execution.execution_algo.market_order import (  # noqa: E402
@@ -209,12 +209,14 @@ def build_stack(args, guard=None, clock=None):
     os.makedirs(os.path.dirname(args.ledger), exist_ok=True)
 
     start_dt = clock() if clock is not None else pd.Timestamp.now()
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=start_dt,
         exchange=KrxExchange(),
         data_handler=data_handler,
         client=gateway,
         ledger=OrderLedger(args.ledger),
+        account_id='kis',
+        venue_name='kis',
         fee_model=KoreaStockFeeModel(
             commission_pct=0.00015, tax_pct=0.0018
         ),

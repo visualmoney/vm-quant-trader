@@ -4,10 +4,10 @@ import pandas as pd
 import pytest
 
 from vmtrader import settings
-from vmtrader.broker.kis.client import AccountBalance, OrderReport
-from vmtrader.broker.kis.guards import SafetyGuard
-from vmtrader.broker.kis.ledger import OrderLedger
-from vmtrader.broker.kis_broker import KisBroker
+from vmtrader.broker.live.client import AccountBalance, OrderReport
+from vmtrader.broker.live.guards import SafetyGuard
+from vmtrader.broker.live.ledger import OrderLedger
+from vmtrader.broker.live_broker import LiveBroker
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 from vmtrader.trading.live import LiveTradingSession
@@ -75,7 +75,7 @@ def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):
     Build a live session around a stub venue.
     """
     venue = StubVenue()
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=now,
         exchange=KrxExchange(holidays=holidays),
         data_handler=LiveDataHandler(venue),
@@ -282,7 +282,7 @@ def test_signals_are_warmed_on_every_launch(tmp_path):
         ('2026081%d' % day, 70000.0 + day * 100) for day in range(1, 10)
     ]
     venue = HistoryVenue(closes=closes)
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=now,
         exchange=KrxExchange(),
         data_handler=LiveDataHandler(venue),
@@ -312,7 +312,7 @@ def test_a_starved_signal_stops_the_rebalance(tmp_path):
     """
     now = pd.Timestamp('2026-08-20 10:00:00')
     venue = HistoryVenue(closes=[])
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=now,
         exchange=KrxExchange(),
         data_handler=LiveDataHandler(venue),
@@ -339,7 +339,7 @@ def test_a_session_without_signals_does_not_ask_for_history(tmp_path):
     """
     now = pd.Timestamp('2026-08-20 10:00:00')
     venue = HistoryVenue()
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=now,
         exchange=KrxExchange(),
         data_handler=LiveDataHandler(venue),

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vmtrader"
-version = "0.3.16"
+version = "0.3.17"
 dependencies = [
     "matplotlib>=3.8",
     "numpy>=2.0.0",

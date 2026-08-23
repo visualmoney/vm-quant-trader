@@ -13,6 +13,15 @@ class KoreaStockFeeModel(FeeModel):
     estimate a rebalance reserves cash against matches what execution
     actually charges.
 
+    Not everything listed on KRX pays that tax. A domestic ETF is a
+    beneficiary certificate rather than a share, so its sale is not
+    taxed at all, and a portfolio built from index ETFs that charged
+    itself the equity rate would be paying the entire tax rather than
+    slightly the wrong one. The engine cannot tell an ETF from a
+    share -- both are six digits -- so the caller names the exempt
+    symbols. Verify the rates against your own broker's schedule:
+    these are the statutory shape, not a particular price list.
+
     Parameters
     ----------
     commission_pct : `float`, optional
@@ -23,12 +32,19 @@ class KoreaStockFeeModel(FeeModel):
         The percentage securities transaction tax applied to the
         consideration of a sale. Buys are never taxed. 0-100% is in the
         range [0.0, 1.0]. Hence, e.g. 0.15% is 0.0015.
+    tax_exempt_assets : `set[str]`, optional
+        Asset symbols whose sales carry no transaction tax, such as domestic
+        ETFs. Commission still applies to them. Defaults to nothing being
+        exempt, which is the behaviour this parameter was added to.
     """
 
-    def __init__(self, commission_pct=0.0, tax_pct=0.0):
+    def __init__(
+        self, commission_pct=0.0, tax_pct=0.0, tax_exempt_assets=None
+    ):
         super().__init__()
         self.commission_pct = commission_pct
         self.tax_pct = tax_pct
+        self.tax_exempt_assets = frozenset(tax_exempt_assets or ())
 
     def _calc_commission(self, asset, quantity, consideration, broker=None):
         """
@@ -56,7 +72,8 @@ class KoreaStockFeeModel(FeeModel):
     def _calc_tax(self, asset, quantity, consideration, broker=None):
         """
         Return the securities transaction tax on the consideration,
-        which Korea charges on sales only.
+        which Korea charges on sales only, and not on the sale of an
+        asset the caller has declared exempt.
 
         A zero quantity is treated as a non-trade and taxed nothing.
 
@@ -77,6 +94,8 @@ class KoreaStockFeeModel(FeeModel):
             The transaction tax, or zero on a buy.
         """
         if quantity >= 0:
+            return 0.0
+        if asset in self.tax_exempt_assets:
             return 0.0
         return self.tax_pct * abs(consideration)
 

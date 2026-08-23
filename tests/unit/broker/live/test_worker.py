@@ -2,7 +2,7 @@ import threading
 
 import pytest
 
-from vmtrader.broker.kis.worker import TaskQueueWorker
+from vmtrader.broker.live.worker import TaskQueueWorker
 
 
 def _appender(sink):

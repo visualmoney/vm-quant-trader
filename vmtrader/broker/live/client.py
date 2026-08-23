@@ -104,7 +104,23 @@ class BrokerClient(Protocol):
 
     Implementations are expected to translate symbols at the boundary:
     the engine speaks 'EQ:005930' and the venue speaks '005930'.
+
+    Attributes
+    ----------
+    venue : `str`
+        Short name of the broker, e.g. 'kis'. Used to label logs and
+        to stamp the ledger.
+    mode : `str`
+        'paper' or 'real'. The engine cannot infer this -- a paper
+        account answers the same endpoints with the same shapes --
+        so the gateway, which chose the server, must declare it. It
+        is what lets a ledger refuse to mix a rehearsal with real
+        money, and what lets the promotion check prove it judged a
+        paper deployment rather than trusting the file it was given.
     """
+
+    venue: str
+    mode: str
 
     def place_market_order(self, symbol: str, quantity: int) -> str:
         """

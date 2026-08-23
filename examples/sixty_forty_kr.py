@@ -9,9 +9,12 @@ forty per cent bonds -- with three substitutions that matter:
   * won as the account currency, so sizing and reporting are in the
     currency the account is actually denominated in;
   * Korean trading costs, which are asymmetric -- brokerage on both
-    sides, transaction tax on sales only. A monthly rebalance sells
-    something almost every month, so pricing that tax matters to the
-    result rather than being a rounding detail.
+    sides, transaction tax on sales only. Except that both legs here
+    are ETFs, and a domestic ETF is a beneficiary certificate rather
+    than a share, so its sale carries no transaction tax at all. Both
+    symbols are therefore declared exempt. A monthly rebalance sells
+    something almost every month, so charging them the equity rate
+    would not be slightly wrong; it would be the entire tax.
 
 The benchmark is buy-and-hold of the equity leg alone, which is the
 comparison a 60/40 investor is actually making: does holding bonds
@@ -41,6 +44,11 @@ from tearsheet_output import output_tearsheet, parse_args
 # Retail brokerage on Korean equities, and the securities transaction
 # tax charged on sales. Both are order-of-magnitude right rather than
 # any particular broker's schedule; adjust to your own.
+#
+# The tax rate is carried rather than set to zero because the model is
+# the one a mixed portfolio would use: it applies to shares, and the
+# exempt set below is what removes it from these two ETFs. Swap in an
+# individual stock and the rate is already correct for it.
 COMMISSION_PCT = 0.00015
 TRANSACTION_TAX_PCT = 0.0018
 
@@ -73,7 +81,9 @@ if __name__ == "__main__":
     )
 
     fee_model = KoreaStockFeeModel(
-        commission_pct=COMMISSION_PCT, tax_pct=TRANSACTION_TAX_PCT
+        commission_pct=COMMISSION_PCT,
+        tax_pct=TRANSACTION_TAX_PCT,
+        tax_exempt_assets={'EQ:%s' % EQUITY, 'EQ:%s' % BONDS}
     )
 
     strategy_alpha_model = FixedSignalsAlphaModel({
