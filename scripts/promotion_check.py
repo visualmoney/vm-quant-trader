@@ -6,6 +6,13 @@ so the criteria for it are written down and, where possible, checked by
 a machine rather than remembered. This script reads the ledger a paper
 deployment produced and reports which criteria hold.
 
+The first thing it checks is that the ledger is a paper ledger at
+all. It used to take that on trust: the docstring said it read "the
+ledger a paper deployment produced" and then read whichever file it
+was pointed at, so a real-money ledger, or one with both mixed in,
+reported the same verdicts. Ledgers now carry the identity of the
+deployment that wrote them.
+
 It cannot check everything. Whether a human has rehearsed a manual
 liquidation, or agreed the real-money order cap, is not visible in a
 database -- those are listed as manual and must be confirmed by the
@@ -82,6 +89,7 @@ def check_ledger(path, min_trading_days=DEFAULT_MIN_TRADING_DAYS):
     conn.row_factory = sqlite3.Row
     try:
         return [
+            _check_ledger_is_paper(conn),
             _check_days_run(conn, min_trading_days),
             _check_orders_placed(conn),
             _check_fills_booked(conn),
@@ -100,6 +108,81 @@ def _count(conn, sql, *params):
     """
     row = conn.execute(sql, params).fetchone()
     return row[0] if row else 0
+
+
+def _check_ledger_is_paper(conn):
+    """
+    Require that this ledger records a paper deployment, and only one.
+
+    Everything below this line measures how a deployment behaved. None
+    of it means anything if the deployment was not the one being
+    promoted, so this runs first and its failure makes the rest moot.
+
+    Two ways to fail. A ledger written before identities were recorded
+    cannot answer, and 'unknown' is not 'paper'. A ledger carrying real
+    rows was either a real deployment or a paper one that got pointed
+    at the wrong file, and neither is a rehearsal.
+    """
+    identity = _identity(conn)
+    if identity is None:
+        return Criterion(
+            'ledger-is-paper', False,
+            'no deployment identity recorded; cannot confirm this is a '
+            'paper ledger'
+        )
+
+    counts = {
+        row['mode']: row['n']
+        for row in conn.execute(
+            'SELECT mode, COUNT(*) AS n FROM equity_curve GROUP BY mode'
+        )
+    }
+    foreign = {mode: n for mode, n in counts.items() if mode != 'paper'}
+    total = sum(counts.values())
+
+    if identity['mode'] != 'paper':
+        return Criterion(
+            'ledger-is-paper', False,
+            "ledger belongs to mode=%s (venue=%s, account=%s)" % (
+                identity['mode'], identity['venue'], identity['account_id']
+            )
+        )
+    if foreign:
+        return Criterion(
+            'ledger-is-paper', False,
+            'mixed: %s' % ', '.join(
+                '%d row(s) mode=%s' % (n, mode)
+                for mode, n in sorted(foreign.items())
+            )
+        )
+    return Criterion(
+        'ledger-is-paper', True,
+        '%d row(s), all mode=paper (venue=%s, account=%s)' % (
+            total, identity['venue'], identity['account_id']
+        )
+    )
+
+
+def _identity(conn):
+    """
+    Return the deployment identity a ledger carries, if any.
+
+    Returns
+    -------
+    `dict{str: str}` or `None`
+        The identity, or None for a ledger that records none.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT key, value FROM meta WHERE key IN "
+            "('venue', 'mode', 'account_id')"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # A ledger written before the meta table existed.
+        return None
+    if len(rows) < 3:
+        return None
+    return {row['key']: row['value'] for row in rows}
 
 
 def _check_days_run(conn, minimum):

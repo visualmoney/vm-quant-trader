@@ -9,13 +9,22 @@ class Broker(ABC):
     algorithm specific logic is completely identical for both
     simulated and live environments.
 
-    The Broker has an associated master denominated currency
-    through which all subscriptions and withdrawals will occur.
+    The Broker has an associated master denominated currency in
+    which the account is held and reported.
 
     The Broker entity can support multiple sub-portfolios, each
     with their own separate handling of PnL. The individual PnLs
     from each sub-portfolio can be aggregated to generate an
     account-wide PnL.
+
+    Moving cash into or out of the account is deliberately absent
+    from this interface. A simulated broker funds itself because
+    a backtest has to start with money from somewhere, but a live
+    venue offers no transfer API, so every live implementation of
+    such a method could only refuse. Requiring four methods that
+    exist to raise made the interface describe the simulator
+    rather than the abstraction. Funding is therefore part of
+    SimulatedBroker, not of Broker; see ADR-0016.
 
     The Broker can execute orders. It contains a queue of
     open orders, needed for handling closed market situations.
@@ -25,36 +34,6 @@ class Broker(ABC):
     account history, to produce a full trading history for the
     account.
     """
-
-    @abstractmethod
-    def subscribe_funds_to_account(self, amount):
-        """
-        Subscribe an amount of cash in the base currency to the
-        broker master cash account.
-
-        Parameters
-        ----------
-        amount : `float`
-            The amount of cash to subscribe to the master account.
-        """
-        raise NotImplementedError(
-            "Should implement subscribe_funds_to_account()"
-        )
-
-    @abstractmethod
-    def withdraw_funds_from_account(self, amount):
-        """
-        Withdraw an amount of cash in the base currency from the
-        broker master cash account.
-
-        Parameters
-        ----------
-        amount : `float`
-            The amount of cash to withdraw from the master account.
-        """
-        raise NotImplementedError(
-            "Should implement withdraw_funds_from_account()"
-        )
 
     @abstractmethod
     def get_account_cash_balance(self, currency=None):
@@ -121,38 +100,6 @@ class Broker(ABC):
         """
         raise NotImplementedError(
             "Should implement list_all_portfolios()"
-        )
-
-    @abstractmethod
-    def subscribe_funds_to_portfolio(self, portfolio_id, amount):
-        """
-        Subscribe funds to a particular sub-portfolio.
-
-        Parameters
-        ----------
-        portfolio_id : `str`
-            The portfolio ID string.
-        amount : `float`
-            The amount of cash to subscribe to the portfolio.
-        """
-        raise NotImplementedError(
-            "Should implement subscribe_funds_to_portfolio()"
-        )
-
-    @abstractmethod
-    def withdraw_funds_from_portfolio(self, portfolio_id, amount):
-        """
-        Withdraw funds from a particular sub-portfolio.
-
-        Parameters
-        ----------
-        portfolio_id : `str`
-            The portfolio ID string.
-        amount : `float`
-            The amount of cash to withdraw from the portfolio.
-        """
-        raise NotImplementedError(
-            "Should implement withdraw_funds_from_portfolio()"
         )
 
     @abstractmethod

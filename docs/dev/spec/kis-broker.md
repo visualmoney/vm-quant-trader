@@ -9,6 +9,8 @@
 | 근거 | 현행 코드 실측 (`vmtrader/broker/*`, `vmtrader/trading/backtest.py`) + 참조 구현 `vm-quant-lab` (KIS 라이브 가동 중) |
 | 문서 성격 | `docs/dev/` 직하 = **살아있는 문서**. 코드 변경과 함께 갱신한다 |
 
+> **개명 안내 (2026-08-23, v0.3.17 · [ADR-0015](../adr/0015-venue-neutral-live-package.md))**: 본 문서가 쓴 이름들이 바뀌었다. `KisBroker` → **`LiveBroker`**, `broker/kis_broker.py` → **`broker/live_broker.py`**, 그리고 `broker/kis/`의 `client`·`worker`·`guards`·`ledger`·`reconcile` → **`broker/live/`** (벤더 고유한 `parse.py`만 `broker/kis/`에 남는다). 라이브 인프라가 venue 중립임이 드러나 두 번째 증권사를 게이트웨이 하나로 붙일 수 있게 하려는 조치이며, 아래 본문의 설계 내용 자체는 유효하다 — **이름과 경로만 위 대응표로 읽으면 된다.** NFR-3이 요구하던 import 경계 검사는 `tests/unit/test_vendor_import_boundary.py`로 구현되었다.
+
 ---
 
 ## 1. 목적과 배경
@@ -86,7 +88,7 @@ VMTrader의 `Broker` ABC는 처음부터 라이브를 전제로 쓰였다. 클�
 | **FR-15** | 기본 서버는 `vps`(모의투자)다. `prod`(실전)는 **호출부에서 명시 지정**해야만 선택된다. 기본값 폴백으로 실전에 연결되는 경로가 없어야 한다 | 인자 미지정 시 `vps` 단언 + `prod` 지정 경로의 명시성 검토 |
 | **FR-16** | 모든 주문의 **의도·접수·체결·거부**를 영속 저장소에 append-only로 기록한다. 기록은 프로세스 종료 후에도 남는다 | 원장 파일 기동 간 지속 테스트 |
 | **FR-17** | 라이브 리밸런싱 스케줄을 실행하는 `TradingSession` 구현체를 제공한다. 백테스트와 **동일한** `QuantTradingSystem`·알파모델·사이저를 사용한다 | 가짜 브로커·가짜 시계로 하루치 세션 실행 통합 테스트 |
-| **FR-18** | 계좌 입출금(`subscribe_funds_to_account` / `withdraw_funds_from_account` / `*_from_portfolio`)은 **미지원**으로 명시적 예외를 던진다. KIS API는 자금 이체를 제공하지 않으며, 조용히 로컬 잔고만 바꾸면 브로커와 즉시 불일치한다 | 4개 메서드 호출 시 예외 타입·메시지 단언 |
+| **FR-18** | ~~계좌 입출금은 미지원으로 명시적 예외를 던진다~~ → **개정 (v0.3.17, [ADR-0016](../adr/0016-drop-funding-from-broker-abc.md))**: 자금 이체 4종이 `Broker` ABC에서 제거되었으므로 라이브 브로커는 이 메서드를 **아예 갖지 않는다.** 요구의 취지(조용히 로컬 잔고만 바꾸는 경로가 없을 것)는 메서드 부재로 더 강하게 충족된다 | 4개 메서드가 인스턴스에 존재하지 않음을 단언 (`tests/unit/broker/test_live_broker.py`) |
 | **FR-19** | 주문 1건당 최대 금액, 세션당 최대 주문 건수, 외부 킬스위치를 통한 즉시 중단을 지원한다. 킬스위치의 매체는 **플래그 파일**이다 — 쓰기는 운용자 또는 텔레그램 게이트웨이(FR-25), 읽기는 가드가 기동 초입·매 접수·매 폴링 반복에서 수행한다 ([ADR-0010](../adr/0010-telegram-gateway-plane.md)) | 한도 초과 주문 거부 테스트 + 플래그 파일 존재 시 다음 주문부터 거부 단언 |
 | **FR-20** | `submit_order()`는 주문을 **접수만 하고 즉시 반환**한다. 체결 반영은 정산 단계와 `update(dt)`가 담당한다 | 가짜 클라이언트로 접수 20건의 소요 시간이 폴링 지연에 비례하지 않음을 단언 |
 | **FR-21** | 라이브 리밸런싱 시각은 **설정값**이며 기본값은 10:00 KST다. `DailyRebalance` 등이 하드코딩한 NYSE 시각(`daily.py:53`, `weekly.py:67`, `end_of_month.py:38`)에 의존하지 않는다 | 설정 주입 테스트 + 기본값 단언 |

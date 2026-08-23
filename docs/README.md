@@ -58,6 +58,9 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 | [0012](dev/adr/0012-signal-history-from-venue.md) | **채택됨** | 신호용 과거 시세는 브로커 일봉 API에서 받고, cron 단발이라 **매 기동마다 신호 버퍼를 워밍업**한다 |
 | [0013](dev/adr/0013-real-money-promotion-criteria.md) | **채택됨** | 실전 승격은 자동 검증 7항 + 수동 확인 5항을 통과해야 한다 — 자동분은 원장으로 기계가 판정한다 |
 | [0014](dev/adr/0014-holiday-calendar-from-real-account.md) | **채택됨** | 휴장일은 실전 계좌로 1일 1회 조회해 파일로 캐시한다 — 모의 서버는 이 엔드포인트를 제공하지 않으며, 조회 프로세스는 자기 `HOME`으로 토큰을 격리한다 |
+| [0015](dev/adr/0015-venue-neutral-live-package.md) | **채택됨** | 라이브 인프라를 벤더 중립 `broker/live/`와 벤더 고유 `broker/kis/`로 분리하고 `KisBroker`를 `LiveBroker`로 개명한다 (**파괴적 변경**) — 두 번째 증권사는 게이트웨이 파일 하나로 붙는다 |
+| [0016](dev/adr/0016-drop-funding-from-broker-abc.md) | **채택됨** | 자금 이체 4종을 `Broker` ABC에서 제외한다 (**파괴적 변경**, 추상 13 → 9) — 시뮬레이터에만 의미가 있고 라이브에서는 거절만 하던 계약 |
+| [0017](dev/adr/0017-paper-is-a-mode-not-a-broker.md) | **채택됨** | 모의투자는 브로커가 아니라 **모드**다 — `PaperBroker`를 만들지 않고 `BrokerClient`가 `venue`/`mode`를 선언하며, 원장이 배포 신원을 기억하고 다른 배포를 거부한다. ETF 증권거래세 면제도 함께 |
 
 ### `dev/reports/` — 시점별 조사 보고서
 
@@ -70,10 +73,11 @@ VMTrader 자체를 **수정하는** 사람을 위한 문서. 계약, 불변식, 
 
 | 보고서 | 상태 | 요약 |
 | --- | --- | --- |
-| [20260818-01-codebase-comprehension-strategy.md](dev/reports/20260818-01-codebase-comprehension-strategy.md) | 유효 · 일부 해소 | 아키텍처 지도, 4단계 학습 경로, **실습 과제 10종(T1~T10)**, 확장 지점 15개, 커버리지 공백 및 기술부채 지도 (기준: `b94c6c0` / v0.3.10). §8-1은 v0.3.12에서, §8-7의 일부는 v0.3.13에서 해소. T5~T10 수행 완료. §8-5·§8-7의 심각도 판단은 보고서 06의 실측으로 뒤집혔다 |
+| [20260818-01-codebase-comprehension-strategy.md](dev/reports/20260818-01-codebase-comprehension-strategy.md) | **대체됨 — 20260823-01** | 아키텍처 지도, 4단계 학습 경로, **실습 과제 10종(T1~T10)**, 확장 지점 15개, 커버리지 공백 및 기술부채 지도 (기준: `b94c6c0` / v0.3.10). §8-1은 v0.3.12에서, §8-7의 일부는 v0.3.13에서 해소. T5~T10 수행 완료. §8-5·§8-7의 심각도 판단은 보고서 06의 실측으로 뒤집혔다 |
 | [20260818-02-transaction-cost-consolidation.md](dev/reports/20260818-02-transaction-cost-consolidation.md) | **v0.3.13 구현 완료** | `Transaction.cost_with_commission`를 `Portfolio`가 사용하도록 통합하는 구현 준비서 — 동치성 분석, 변경 설계, 테스트 계획 |
 | [20260818-03-performance-module-defects.md](dev/reports/20260818-03-performance-module-defects.md) | **v0.3.13 수정 완료** | `statistics/performance.py`의 **결함 2건** — 발생하지 않는 `ValueError`, 최대 낙폭 과소 보고(실측 최대 5.44%p) |
 | [20260818-04-execution-and-cost-layer-limits.md](dev/reports/20260818-04-execution-and-cost-layer-limits.md) | **부분 수정** | T7 실험 — 사이저의 **수수료 과대 추정**(성과 손실의 22.2%)과 실행 알고리즘 주입 지점 부재는 v0.3.13에서 수정. **시간 분할 실행 불가(L1)는 구조적 한계로 남음** |
 | [20260818-05-data-source-contract.md](dev/reports/20260818-05-data-source-contract.md) | **v0.3.13 수정 완료** | T8 실험 — `DataSource` ABC 신설과 인메모리 구현체 추가, 역추출한 계약, `adjusted` 인자 불일치 해소, **시작일 이전 조회가 미래 가격을 반환하던 룩어헤드 결함** |
 | [20260818-06-safety-net-and-profiling.md](dev/reports/20260818-06-safety-net-and-profiling.md) | **권고 1~3 적용됨** | T9·T10 — 변형 주입으로 측정한 e2e 안전망의 검출 범위(유효 12건 중 5건), **e2e가 전면적 룩어헤드를 통과시키는 이유**, 그리고 §8-5·§8-7 추정을 뒤집은 프로파일링 실측 |
 | [20260822-01-worker-lifecycle-and-shutdown.md](dev/reports/20260822-01-worker-lifecycle-and-shutdown.md) | 유효 · **F-5·F-1② 조치** | smtm 대조 — 정산 워커가 **non-daemon인 이유**와 `SIGINT`/`SIGTERM` 수신 시의 실측 동작(exit 130/143), 사이클이 10~20분일 때·**텔레그램이 리밸런싱을 강제할 때**의 재검토, cron 대 systemd. 소견 9건 중 **위험 3건**(무한 hang, 상주 전환 시 리셋 지점 소실, 자동 재시작의 이중 주문). F-5(죽은 코드)와 F-1②(`stop()` 유한 timeout + 초과 로그)는 조치 완료, F-9(`task_done()` 위치가 배리어 의미를 정한다)는 smtm 이력 추적에서 추가. §11은 주문 처리 7단계 중 워커가 놓이는 칸(5·6)과 나머지를 넘기지 말아야 하는 이유, §12는 단일 파일 봇과의 대조로 본 **기록의 시점과 복잡도의 출처** |
+| [20260823-01-codebase-comprehension-strategy.md](dev/reports/20260823-01-codebase-comprehension-strategy.md) | **유효 · v0.3.17 기준으로 갱신됨** | **20260818-01의 대체판** — 백테스트·라이브 **2평면** 아키텍처, ADR을 먼저 읽는 5단계 학습 경로, 실습 과제 11종(B1~B5·**L1~L5**·C1), 확장 지점 ABC 16 + **`BrokerClient` Protocol**. §5가 **`Broker` 인터페이스 리뷰** — 시뮬레이션·모의투자·KIS 실전은 동작하고 **DB증권은 붙지 않는다**. venue 추상화(6메서드)는 이미 중립이며 DBS API 6개 중 5개가 그대로 대응하나, 중립 코드 6모듈이 `broker/kis/` 이름 아래 있고 코어가 그것을 import한다(소견 B-1~B-5, 권고 R1~R8). §5.6은 **모의투자를 브로커가 아니라 모드로 다루는 결정**(ADR-0017)과 ETF 증권거래세 면제. R1~R3·자금이체 제거는 **적용됨**([ADR-0015](dev/adr/0015-venue-neutral-live-package.md)·[0016](dev/adr/0016-drop-funding-from-broker-abc.md)·[0017](dev/adr/0017-paper-is-a-mode-not-a-broker.md)), R4·R6·R7·R8 미해소. 실측: 734 케이스 / 83.71% (기준: v0.3.17) |

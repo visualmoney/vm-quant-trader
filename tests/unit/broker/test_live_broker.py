@@ -7,11 +7,11 @@ import pytest
 
 from vmtrader import settings
 from vmtrader.broker.fee_model.korea_fee_model import KoreaStockFeeModel
-from vmtrader.broker.kis import ledger as ledger_states
-from vmtrader.broker.kis.client import AccountBalance, Holding, OrderReport
-from vmtrader.broker.kis.guards import KillSwitchEngaged, SafetyGuard
-from vmtrader.broker.kis.ledger import OrderLedger
-from vmtrader.broker.kis_broker import KisBroker
+from vmtrader.broker.live import ledger as ledger_states
+from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
+from vmtrader.broker.live.guards import KillSwitchEngaged, SafetyGuard
+from vmtrader.broker.live.ledger import OrderLedger
+from vmtrader.broker.live_broker import LiveBroker
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 from vmtrader.execution.order import Order
@@ -108,7 +108,7 @@ def _broker(client, tmp_path, guard=None, cash=1000000.0, clock=None):
     """
     start = pd.Timestamp('2026-08-20 10:00:00')
     ledger = OrderLedger(str(tmp_path / 'ledger.db'))
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=start,
         exchange=KrxExchange(),
         data_handler=LiveDataHandler(client),
@@ -460,22 +460,29 @@ def test_seed_from_venue_rebuilds_holdings_and_cash(tmp_path):
     )['EQ:005930']['quantity'] == 10
 
 
-def test_funding_methods_are_refused(tmp_path):
+def test_no_funding_api_is_offered(tmp_path):
     """
-    Tests that the four funding methods raise.
+    Tests that a live broker exposes no way to move cash locally.
 
-    Quietly adjusting local cash would desynchronise the engine from
-    the account the moment it happened.
+    The venue has no transfer API, so any such method could only
+    refuse. They used to exist and raise, because the Broker ABC
+    required them; since ADR-0016 it does not, and the honest answer
+    to "can I fund this account through the engine" is that the method
+    is not there. Pinned because deleting a method is easy to undo by
+    accident when copying the simulated broker.
     """
     broker = _broker(FakeClient(), tmp_path)
-    for call in (
-        lambda: broker.subscribe_funds_to_account(1.0),
-        lambda: broker.withdraw_funds_from_account(1.0),
-        lambda: broker.subscribe_funds_to_portfolio('kis', 1.0),
-        lambda: broker.withdraw_funds_from_portfolio('kis', 1.0),
+    for name in (
+        'subscribe_funds_to_account',
+        'withdraw_funds_from_account',
+        'subscribe_funds_to_portfolio',
+        'withdraw_funds_from_portfolio',
     ):
-        with pytest.raises(NotImplementedError, match='not supported'):
-            call()
+        assert not hasattr(broker, name), (
+            "LiveBroker should not offer '%s'; funding a live account "
+            "happens at the venue, and the engine reads the balance."
+            % name
+        )
 
 
 def test_total_equity_carries_the_master_key(tmp_path):
@@ -635,7 +642,7 @@ def test_settle_reports_a_worker_that_would_not_stop(
     """
     stub = _StubbornWorker()
     monkeypatch.setattr(
-        'vmtrader.broker.kis_broker.TaskQueueWorker', lambda **kw: stub
+        'vmtrader.broker.live_broker.TaskQueueWorker', lambda **kw: stub
     )
     settings.set_print_events(True)
 
@@ -692,7 +699,7 @@ def test_a_slow_drain_is_reported_but_still_waited_out(
     """
     stub = _SlowDrainWorker()
     monkeypatch.setattr(
-        'vmtrader.broker.kis_broker.TaskQueueWorker', lambda **kw: stub
+        'vmtrader.broker.live_broker.TaskQueueWorker', lambda **kw: stub
     )
     settings.set_print_events(True)
 
@@ -727,7 +734,7 @@ def test_each_settle_round_leaves_a_drain_sample(tmp_path, caplog):
         broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
     )
 
-    with caplog.at_level(logging.DEBUG, logger='vmtrader.broker.kis_broker'):
+    with caplog.at_level(logging.DEBUG, logger='vmtrader.broker.live_broker'):
         broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
 
     samples = [

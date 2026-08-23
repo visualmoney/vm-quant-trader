@@ -12,7 +12,7 @@ somebody else trading the same account by hand, which is not our
 business to undo.
 """
 
-from vmtrader.broker.kis import ledger as ledger_states
+from vmtrader.broker.live import ledger as ledger_states
 
 
 class ReconcileResult:
@@ -77,7 +77,7 @@ def reconcile(broker, halt_on_mismatch=True):
 
     Parameters
     ----------
-    broker : `KisBroker`
+    broker : `LiveBroker`
         The broker to reconcile. Its portfolio is rebuilt from the
         venue as part of this.
     halt_on_mismatch : `Boolean`, optional
@@ -134,7 +134,7 @@ def _recover_open_orders(broker):
 
     Parameters
     ----------
-    broker : `KisBroker`
+    broker : `LiveBroker`
         The broker whose ledger and client are used.
 
     Returns
@@ -186,7 +186,7 @@ def _already_booked(broker, order_id):
 
     Parameters
     ----------
-    broker : `KisBroker`
+    broker : `LiveBroker`
         The broker whose ledger is read.
     order_id : `str`
         The engine order ID.

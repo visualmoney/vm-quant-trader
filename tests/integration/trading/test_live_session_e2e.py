@@ -17,11 +17,11 @@ from vmtrader import settings
 from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
 from vmtrader.asset.universe.static import StaticUniverse
 from vmtrader.broker.fee_model.korea_fee_model import KoreaStockFeeModel
-from vmtrader.broker.kis import ledger as ledger_states
-from vmtrader.broker.kis.client import AccountBalance, Holding, OrderReport
-from vmtrader.broker.kis.guards import SafetyGuard
-from vmtrader.broker.kis.ledger import OrderLedger
-from vmtrader.broker.kis_broker import KisBroker
+from vmtrader.broker.live import ledger as ledger_states
+from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
+from vmtrader.broker.live.guards import SafetyGuard
+from vmtrader.broker.live.ledger import OrderLedger
+from vmtrader.broker.live_broker import LiveBroker
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 from vmtrader.execution.execution_handler import ExecutionHandler
@@ -122,7 +122,7 @@ def _build(tmp_path, venue, now, max_order_value=100000000.0):
         handler.
     """
     data_handler = LiveDataHandler(venue)
-    broker = KisBroker(
+    broker = LiveBroker(
         start_dt=now,
         exchange=KrxExchange(),
         data_handler=data_handler,

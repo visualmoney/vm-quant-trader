@@ -2,11 +2,11 @@ import pandas as pd
 import pytest
 
 from vmtrader import settings
-from vmtrader.broker.kis import ledger as ledger_states
-from vmtrader.broker.kis.client import AccountBalance, Holding, OrderReport
-from vmtrader.broker.kis.ledger import OrderLedger
-from vmtrader.broker.kis.reconcile import reconcile
-from vmtrader.broker.kis_broker import KisBroker
+from vmtrader.broker.live import ledger as ledger_states
+from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
+from vmtrader.broker.live.ledger import OrderLedger
+from vmtrader.broker.live.reconcile import reconcile
+from vmtrader.broker.live_broker import LiveBroker
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 
@@ -59,7 +59,7 @@ def _broker(venue, tmp_path):
     """
     Build a broker against the stub venue.
     """
-    return KisBroker(
+    return LiveBroker(
         start_dt=pd.Timestamp('2026-08-20 09:30:00'),
         exchange=KrxExchange(),
         data_handler=LiveDataHandler(venue),

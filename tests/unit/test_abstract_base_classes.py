@@ -13,6 +13,7 @@ from vmtrader.asset.universe.static import StaticUniverse
 from vmtrader.broker.broker import Broker
 from vmtrader.broker.fee_model.fee_model import FeeModel
 from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
+from vmtrader.broker.simulated_broker import SimulatedBroker
 from vmtrader.exchange.exchange import Exchange
 from vmtrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
 from vmtrader.execution.execution_algo.market_order import (
@@ -200,3 +201,26 @@ def test_broker_requires_update():
 
     with pytest.raises(TypeError, match='update'):
         BrokerWithoutUpdate()
+
+
+def test_broker_does_not_require_a_funding_api():
+    """
+    Tests that moving cash is no longer part of the Broker contract.
+
+    A live venue offers no transfer API, so the four funding methods
+    could only ever be implemented there as refusals, and an interface
+    that forces four methods into existence purely to raise describes
+    the simulator rather than the abstraction (ADR-0016). Funding now
+    belongs to SimulatedBroker alone.
+    """
+    funding = frozenset([
+        'subscribe_funds_to_account',
+        'withdraw_funds_from_account',
+        'subscribe_funds_to_portfolio',
+        'withdraw_funds_from_portfolio',
+    ])
+    assert Broker.__abstractmethods__ & funding == frozenset()
+
+    # The simulator still funds itself: a backtest has to start with
+    # money from somewhere.
+    assert funding <= set(dir(SimulatedBroker))

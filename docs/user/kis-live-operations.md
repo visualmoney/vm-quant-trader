@@ -55,9 +55,9 @@ TZ=Asia/Seoul
 ## 4. 기동 스크립트가 하는 일
 
 ```python
-from vmtrader.broker.kis_broker import KisBroker
-from vmtrader.broker.kis.guards import SafetyGuard
-from vmtrader.broker.kis.ledger import OrderLedger
+from vmtrader.broker.live_broker import LiveBroker
+from vmtrader.broker.live.guards import SafetyGuard
+from vmtrader.broker.live.ledger import OrderLedger
 from vmtrader.broker.fee_model.korea_fee_model import KoreaStockFeeModel
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
@@ -69,13 +69,19 @@ from kis_gateway import KisGateway
 
 gateway = KisGateway.connect(svr='vps')          # 실전은 svr='prod' — 명시해야만 된다
 data_handler = LiveDataHandler(gateway)
-broker = KisBroker(
+broker = LiveBroker(                             # 벤더 중립 — 증권사는 client가 정한다
     start_dt=pd.Timestamp.now(),
     exchange=KrxExchange(holidays=holidays),      # §5 참조
     data_handler=data_handler,
     client=gateway,
     ledger=OrderLedger('/home/ec2-user/data/vmtrader/ledger.db'),
-    fee_model=KoreaStockFeeModel(commission_pct=0.00015, tax_pct=0.0018),
+    account_id='kis',
+    venue_name='kis',                             # 운용 로그의 접두어
+    fee_model=KoreaStockFeeModel(
+        commission_pct=0.00015,
+        tax_pct=0.0018,                           # 개별주 매도세
+        tax_exempt_assets={'EQ:069500'},          # 국내 ETF는 증권거래세 면제
+    ),
     guard=SafetyGuard(
         kill_switch_path='/home/ec2-user/lock/vmtrader.HALT',
         max_order_value=5000000.0,
@@ -230,7 +236,34 @@ python scripts/kis_smoke.py --stage safety
 python scripts/promotion_check.py /home/ec2-user/data/vmtrader/ledger.db
 ```
 
-원장을 **읽기 전용**으로 열어 7개 기준(운용 일수, 실제 접수·체결 여부, 미해결 고아 의도, STALE 비율, 멱등키 중복, 킬스위치 발동 이력)을 판정하고, 사람만 확인할 수 있는 5개 항목을 함께 출력한다. **자동 통과는 승인이 아니다** — 수동 항목이 남아 있다.
+원장을 **읽기 전용**으로 열어 8개 기준을 판정하고, 사람만 확인할 수 있는 5개 항목을 함께 출력한다. **자동 통과는 승인이 아니다** — 수동 항목이 남아 있다.
+
+첫 번째 기준이 `ledger-is-paper`다. **이 원장이 모의 배포의 것인지를 먼저 확인한다.** 나머지 7개(운용 일수, 실제 접수·체결 여부, 미해결 고아 의도, STALE 비율, 멱등키 중복, 킬스위치 발동 이력)는 배포가 어떻게 행동했는지를 재는데, 그 배포가 승격 대상이 아니었다면 전부 무의미하기 때문이다.
+
+```text
+PASS ledger-is-paper   120 row(s), all mode=paper (venue=kis, account=kis-etf-01)
+FAIL ledger-is-paper   ledger belongs to mode=real (venue=kis, account=kis-etf-01)
+FAIL ledger-is-paper   no deployment identity recorded; cannot confirm this is a paper ledger
+```
+
+세 번째가 나오면 **v0.3.17 이전에 만들어진 원장**이다. 그때는 원장이 자기 신원을 기록하지 않았으므로 모의인지 실전인지 알 방법이 없고, `unknown`은 `paper`가 아니다. 새 원장으로 다시 쌓거나, 손으로 신원을 넣었다면 그 사실을 기록에 남길 것.
+
+### 원장은 배포마다 하나다
+
+원장 파일은 자기를 만든 배포(**증권사·모드·계좌**)를 기억하고, 다른 배포가 열면 거부한다.
+
+```text
+LedgerIdentityConflict: Ledger '.../ledger.db' belongs to venue=kis mode=paper
+account=kis-etf-01, but was opened as venue=kis mode=real account=kis-etf-01.
+Use a separate ledger file per deployment; ...
+```
+
+**이 예외가 뜨면 경로를 잘못 가리킨 것이다.** 모의와 실전이 한 파일에 섞이면 양쪽 다 유효한 행을 남기므로 조용히 오염되고, 그 파일이 곧 승격 판정의 유일한 증거다. 계좌를 여럿 굴린다면 원장도 킬스위치도 계좌마다 따로 둘 것.
+
+```text
+/home/ec2-user/data/vmtrader/kis-paper-etf01.db
+/home/ec2-user/data/vmtrader/kis-real-etf01.db
+```
 
 특히 토큰 발급 주체 항목을 넘기지 말 것. KIS는 동일 앱키의 **60초 내 재발급을 거부**하므로, 같은 앱키를 쓰는 다른 봇이 있다면 이 엔진이 토큰을 새로 발급하는 순간 **그쪽 토큰이 깨진다**.
 

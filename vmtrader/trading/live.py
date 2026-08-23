@@ -16,8 +16,8 @@ daily rather than only after a crash.
 import pandas as pd
 
 from vmtrader import settings
-from vmtrader.broker.kis.guards import KillSwitchEngaged
-from vmtrader.broker.kis.reconcile import reconcile
+from vmtrader.broker.live.guards import KillSwitchEngaged
+from vmtrader.broker.live.reconcile import reconcile
 from vmtrader.signals.warmup import warm_up_signals
 from vmtrader.trading.trading_session import TradingSession
 
@@ -28,7 +28,7 @@ class LiveTradingSession(TradingSession):
 
     Parameters
     ----------
-    broker : `KisBroker`
+    broker : `LiveBroker`
         The live broker.
     qts : `QuantTradingSystem`
         The same trading system a backtest uses, unmodified.
