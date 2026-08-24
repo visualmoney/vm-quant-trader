@@ -1,8 +1,15 @@
 [report]
-# The suite currently sits at 72%. The floor is set slightly below that so a
-# refactor that shuffles a few lines does not fail the build, while a genuine
-# drop in coverage does. Raise it as coverage improves; never lower it to make
-# a red build pass.
+# The floor sits below actual coverage so a refactor that shuffles a few lines
+# does not fail the build, while a genuine drop in coverage does. Raise it as
+# coverage improves; never lower it to make a red build pass.
+#
+# There is deliberately no snapshot of current coverage in this comment. One
+# used to be here and it went stale: it still read 72% long after the suite had
+# passed 80%. The measured number belongs to CI and to docs/dev/reports/.
+#
+# This file is the authority for the floor itself. The policy around it, and
+# the reasoning for the deliberate coverage exceptions, are in
+# docs/dev/testing.md section 5, which does not repeat the value.
 fail_under = 70
 
 exclude_lines =

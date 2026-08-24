@@ -30,6 +30,10 @@ jobs:
 
       # .coveragerc sets fail_under, so a drop in coverage fails the build here
       # rather than only showing up on the Coveralls dashboard afterwards.
+      #
+      # What this run is required to guarantee -- no network, no vendor SDK
+      # installed, no real time spent waiting -- is stated in docs/dev/testing.md
+      # sections 2 and 3, and enforced by tests/unit/test_vendor_import_boundary.py.
       - name: Test
         run: uv run pytest --cov=vmtrader
 
