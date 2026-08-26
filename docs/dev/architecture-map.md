@@ -122,6 +122,7 @@
 | `alpha_model/` `risk_model/` | 신호 → 가중치 | 공유 |
 | `signals/` | 롤링 지표 + 워밍업 | 공유 + LV |
 | `asset/` | 자산·유니버스 | 공유 |
+| `messaging/` | 이벤트 어휘 9종(주문 6 + 생명주기 3) + 단일 소비자 `Mailbox` — **리프**, 엔진 내부 무의존. **아직 생산자·소비자 0** | 공유 |
 | `broker/broker.py` | `Broker` ABC — 추상 9개 | 공유 |
 | `broker/portfolio/` | 현금·포지션·손익 회계 | 공유 |
 | `broker/fee_model/` | 비용 모델 5종 (`KoreaStock` 포함) | 공유 |
@@ -215,7 +216,7 @@
 | **원칙 1** 데이터 정직성 | **부분** | 결측 전파: `daily_bar.py:127-133`·`:154-160`, `data_source.py`, `live_data_handler.py:62-66`. 테스트 §5 | 다만 `daily_bar.py:85`의 `ffill`과 `:130`·`:157`의 `get_indexer(method='pad')`가 결측 세션을 직전값으로 채우고 **그 값으로 체결한다** — 금지 목록의 "직전값 캐리포워드(장중 실행 판단용)"에 해당. `test_in_memory_data_source.py::test_a_gap_in_the_bars_is_valued_at_the_last_known_price`의 docstring이 이 정책을 통과하는 유일한 테스트임을 스스로 밝힌다 |
 | **원칙 2** 시뮬·실환경 동형성 | **부분** | 1단계(회귀): 강함 — `.dat` 완전 일치 e2e 5건. 2단계(경계 감사): 부분 — `test_krx_exchange.py`가 세션 경계·휴장일을 덮으나 **백테스트 평면에는 휴장일 캘린더 자체가 없다** | **3단계(실거래 재현)가 없다.** 원장에 실체결가가 쌓이고 있으나 재생 대조 절차가 없다. `scripts/promotion_check.py`의 자동 항목은 배포 위생을 보지 손익 일치를 보지 않는다. 아래 "값진 3가지" ② |
 | **D1** 경로 의존 루프 | **준수** | 백테스트 전 구간 단일 스레드. 순서 고정(`backtest.py:409-450`), 체결은 `execution_handler.py:85-86`이 같은 스텝에 묶는다. 결정론은 `.dat` 완전 일치가 고정 | 스텝 순서가 참조 모델과 **다르다** — 이 저장소는 `체결 → 신호 → 전략 → 기록`이고 시계 전진은 이터레이터가 한다. 다르되 고정되어 있고 회귀가 지킨다. 프로세스 단위 병렬은 `settings.PRINT_EVENTS`가 모듈 전역+`global`(`settings.py:14-19`)이라 걸림돌이 있다 |
-| **D2** 단일 소비자 파이프라인 | **부분** | 단일 FIFO 워커(`broker/live/worker.py`), 락은 핸드오프 버퍼 하나(`live_broker.py:543`) | **상태를 독점하는 스레드가 소비자가 아니라 메인 스레드다.** 워커는 조회하고 버퍼에 append만 하며, `Portfolio` 기표는 드레인 배리어 뒤 메인 스레드가 한다([ADR-0008](adr/0008-task-queue-fill-pump.md)). 액터 모델의 목적은 달성되고 배치가 뒤집혀 있다 |
+| **D2** 단일 소비자 파이프라인 | **부분** | 단일 FIFO 워커(`broker/live/worker.py`), 락은 핸드오프 버퍼 하나(`live_broker.py:543`) | **메인 스레드가 곧 그 단일 소비자다.** 워커는 조회하고 버퍼에 append만 하며, `Portfolio` 기표는 드레인 배리어 뒤 메인 스레드가 한다([ADR-0008](adr/0008-task-queue-fill-pump.md)). [threading-and-event-architecture.md](threading-and-event-architecture.md) 결정 12가 이 배치를 목표 구조로 확정했다 — 브로커 액터에 전용 스레드를 주지 않고, 메인 스레드의 호출 순서를 상주 전환 때 메일박스 루프로 바꾼다. **부분**인 것은 아직 그 루프가 없어서이지 배치가 틀려서가 아니다 |
 | **D2 불변식 3** (전 스레드 데몬) | **불채택** | `broker/live/worker.py:141` `daemon=False`. [ADR-0008](adr/0008-task-queue-fill-pump.md)이 "daemon=False, 상주 금지"를 명시 | **전제가 다르다 — cron 단발 대 상주 데몬.** 근거 3층([보고서 20260822-01 §3](reports/20260822-01-worker-lifecycle-and-shutdown.md)): ① [ADR-0009](adr/0009-cron-oneshot-live-session.md)로 워커 수명 < 프로세스 수명이라 "워커가 종료를 막는다"가 성립하지 않는다 ② 체결 유실 0의 종료 시퀀스가 요구사항이다 ③ join이 곧 회계 단일 작성자 배리어다. 전제가 바뀌면(상주 전환) 재검토 대상. **부채: 이 플래그를 직접 단언하는 테스트가 없다** — `daemon=True`로 뒤집어도 스위트가 통과한다 |
 | **D2-a** 백프레셔 | **불채택 — 범위 밖** | 큐는 무제한이나 생산자가 메인 스레드 하나이고 게시량이 미결 주문 수로 유계다(`live_broker.py:634-640`) | push 기반 수신(WebSocket)이 없다. 실시간 시세를 도입하면 이 축이 되살아난다 |
 | **D3** 실행 모드 전환 (동기/비동기 dispatcher) | **불채택** | 백테스트에는 큐가 아예 없다 — `SimulatedBroker.update`가 호출 스레드에서 즉시 체결(`:672-682`) | dispatcher 주입 대신 **브로커 구현을 갈아끼우는** 방식을 택했다([ADR-0006](adr/0006-decouple-submit-from-fill.md)). 결정론은 얻지만 **D3 불변식 1(두 모드가 동일 핸들러 코드)은 미충족** — 체결 경로가 두 클래스로 갈린다. 원칙 2의 잔여 위험이며 [보고서 20260823-01](reports/20260823-01-codebase-comprehension-strategy.md) R5와 같은 뿌리 |

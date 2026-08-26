@@ -1,8 +1,9 @@
 import pytest
 
 from vmtrader.broker.live.guards import (
-    KillSwitchEngaged, OrderLimitExceeded, SafetyGuard
+    KillSwitchEngaged, OrderLimitExceeded, SafetyGuard, TradingHalted
 )
+from vmtrader.errors import StopRequested
 
 
 def test_no_limits_configured_allows_everything():
@@ -94,3 +95,60 @@ def test_kill_switch_is_read_each_time_not_cached(tmp_path):
     assert guard.is_kill_switch_engaged() is False
     switch.write_text('')
     assert guard.is_kill_switch_engaged() is True
+
+
+def test_the_gate_reads_every_stop_signal(tmp_path):
+    """
+    Tests that one function answers "may we trade".
+
+    D14 invariant 4 asks for a single point where stop signals are
+    checked. Until the reconciliation halt moved in there were four
+    reading sites in three shapes -- and one of them returned quietly,
+    so no loop could ever see it. Adding a signal is a branch here
+    now, not a fourth place to remember.
+    """
+    switch = tmp_path / 'STOP'
+    guard = SafetyGuard(kill_switch_path=str(switch))
+
+    guard.check_can_trade()   # nothing engaged
+
+    guard.halt('reconciliation found an overstatement')
+    with pytest.raises(TradingHalted, match='overstatement'):
+        guard.check_can_trade()
+
+    guard.halted_reason = None
+    switch.touch()
+    with pytest.raises(KillSwitchEngaged):
+        guard.check_can_trade()
+
+
+def test_every_stop_signal_shares_one_base():
+    """
+    Tests the property that lets a loop name the family once.
+
+    A consumer loop absorbs handler failures by design. It must not
+    absorb a stop, and it can only tell them apart if every stop is
+    catchable under one name.
+    """
+    assert issubclass(KillSwitchEngaged, StopRequested)
+    assert issubclass(TradingHalted, StopRequested)
+    # A limit is not a stop: it refuses one order and the cycle goes on.
+    assert not issubclass(OrderLimitExceeded, StopRequested)
+
+
+def test_a_halt_does_not_clear_itself():
+    """
+    Tests that resuming is a human decision.
+
+    Believing we hold more than the venue reports is not the kind of
+    thing that stops being true because time passed. Clearing it means
+    a new session, once somebody has looked.
+    """
+    guard = SafetyGuard()
+    guard.halt('overstated')
+
+    assert guard.is_halted() is True
+    with pytest.raises(TradingHalted):
+        guard.check_can_trade()
+    with pytest.raises(TradingHalted):
+        guard.check_can_trade()

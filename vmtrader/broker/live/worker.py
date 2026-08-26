@@ -82,6 +82,7 @@ class TaskQueueWorker:
         self.on_terminate = on_terminate
         self._task_queue = queue.Queue()
         self._thread = None
+        self._stop_called = False
 
     def post_task(self, task: Task) -> None:
         """
@@ -169,7 +170,18 @@ class TaskQueueWorker:
         if self._thread is None:
             return True
         thread = self._thread
-        self._task_queue.put(None)
+        if threading.current_thread() is thread:
+            raise RuntimeError(
+                "Worker[%s] cannot stop itself: the thread being waited "
+                "on is the one doing the waiting" % self.name
+            )
+        # The pill goes in once. Waiting again with more patience is a
+        # legitimate thing to do after a short timeout, but a second
+        # pill would outlive this worker and stop whatever consumed the
+        # queue next.
+        if not self._stop_called:
+            self._stop_called = True
+            self._task_queue.put(None)
         thread.join(timeout)
         if thread.is_alive():
             logger.error("Worker[%s] %s초 안에 종료하지 못했다.", self.name, timeout)

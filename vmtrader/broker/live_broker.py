@@ -32,7 +32,7 @@ from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 from vmtrader.broker.live import ledger as ledger_states
 from vmtrader.broker.live.ledger import OrderLedger
 from vmtrader.broker.live.guards import (
-    KillSwitchEngaged, OrderLimitExceeded, SafetyGuard
+    OrderLimitExceeded, SafetyGuard, StopRequested
 )
 from vmtrader.broker.live.worker import TaskQueueWorker
 from vmtrader.broker.portfolio.portfolio import Portfolio
@@ -40,6 +40,20 @@ from vmtrader.broker.transaction.transaction import Transaction
 from vmtrader import settings
 
 logger = logging.getLogger(__name__)
+
+# How many open orders a settlement round was sized for. The fill
+# worker's queue is deliberately not capped at this: its producer is
+# the main thread, which posts one round and then blocks on the drain
+# barrier, so the depth is already bounded by the open order count and
+# there is no flood to defend against. Dropping here would be worse
+# than useless -- the posting order is deterministic, so the same tail
+# would be starved every round and those orders would reach the
+# deadline never having been polled once.
+#
+# What the number is for is knowing. A round this large means the
+# cycle has left the shape it was designed around, which is worth
+# saying out loud rather than silently truncating.
+POLL_ROUND_WARN = 200
 
 
 class LiveBroker(Broker):
@@ -139,12 +153,17 @@ class LiveBroker(Broker):
 
         self.portfolios = {}
         self.open_orders = {}
-        # Set by reconciliation when the engine believes it holds more
-        # than the venue reports. Selling shares that are not there is
-        # the failure this prevents.
-        self.trading_halted = False
+        # Reconciliation sets this when the engine believes it holds
+        # more than the venue reports; selling shares that are not
+        # there is the failure it prevents. The state lives in the
+        # guard, which is the one place a stop signal is read, and this
+        # stays as the name reconciliation and the tests already use.
         self._fill_buffer = []
         self._buffer_lock = threading.Lock()
+        # What the portfolio has, per order. Distinct from the
+        # poller's watermark on purpose -- see _drain_fill_buffer.
+        self._portfolio_booked = {}
+        self._portfolio_charged = {}
         self._worker = None
 
         self.create_portfolio(account_id, account_id)
@@ -153,6 +172,42 @@ class LiveBroker(Broker):
         self.ledger.stamp_identity(
             self.venue_name, self.mode, self.account_id
         )
+
+    @property
+    def trading_halted(self):
+        """
+        Return whether reconciliation stopped this session.
+
+        A view onto the guard, which owns every stop signal. Kept as an
+        attribute because that is how reconciliation and its tests
+        speak; what changed is that setting it now reaches the one gate
+        every loop consults, so a halt can raise instead of being read
+        quietly in one place and nowhere else.
+
+        Returns
+        -------
+        `Boolean`
+            Whether trading is stopped.
+        """
+        return self.guard.is_halted()
+
+    @trading_halted.setter
+    def trading_halted(self, halted):
+        """
+        Halt or clear the session.
+
+        Parameters
+        ----------
+        halted : `Boolean`
+            Whether to stop trading.
+        """
+        if halted:
+            self.guard.halt(
+                'Reconciliation found the engine holding more than the '
+                'venue reports.'
+            )
+        else:
+            self.guard.halted_reason = None
 
     def _open_thread_ledger(self):
         """
@@ -430,13 +485,6 @@ class LiveBroker(Broker):
         portfolio_id_str = str(portfolio_id)
         dt = self._now()
 
-        if self.trading_halted:
-            self._log(
-                'Trading is halted after a position mismatch; refusing '
-                'order for %s.' % order.asset
-            )
-            return
-
         if not self.exchange.is_open_at_datetime(dt):
             self._log(
                 'Market closed at %s; refusing order for %s.'
@@ -454,7 +502,7 @@ class LiveBroker(Broker):
 
         try:
             self.guard.check_order(order.asset, quantity, price)
-        except (KillSwitchEngaged, OrderLimitExceeded) as err:
+        except (StopRequested, OrderLimitExceeded) as err:
             self.ledger.record_intent(
                 order.order_id, order.asset, quantity, dt
             )
@@ -462,7 +510,7 @@ class LiveBroker(Broker):
                 order.order_id, ledger_states.REJECTED, dt, note=str(err)
             )
             self._log('Order for %s refused: %s' % (order.asset, err))
-            if isinstance(err, KillSwitchEngaged):
+            if isinstance(err, StopRequested):
                 raise
             return
 
@@ -488,7 +536,8 @@ class LiveBroker(Broker):
             'symbol': order.asset,
             'quantity': quantity,
             'portfolio_id': portfolio_id_str,
-            'booked_quantity': 0
+            'booked_quantity': 0,
+            'booked_fees': 0.0
         }
 
     # -- fill settlement -------------------------------------------------
@@ -500,6 +549,23 @@ class LiveBroker(Broker):
         Runs on the worker thread. It must not touch the portfolio: it
         appends to a buffer under a lock, and the main thread books
         from there.
+
+        Quantity and fees are both reported cumulatively by the venue,
+        and both are converted to increments here. Fees were once
+        passed through whole, which charged the running total again on
+        every increment: an order filling in three parts paid its
+        estimated costs three times over. The ledger's 'record_fill'
+        has always documented its 'fees' argument as belonging to the
+        increment, so this is the code catching up with the contract.
+
+        The fee figure is the venue's estimate and may be revised
+        between polls. Advancing the booked total only when an
+        increment is booked is what makes that safe: a revision
+        arriving with no new quantity is not lost, it is folded into
+        the next increment's difference. A revision after the last
+        increment is not booked at all, which is the same limitation
+        the average price already carries, and the same one
+        reconciliation exists to catch.
 
         Parameters
         ----------
@@ -522,27 +588,31 @@ class LiveBroker(Broker):
 
         if increment > 0:
             direction = 1 if state['quantity'] > 0 else -1
+            fees = report.fees - state['booked_fees']
             fill = {
                 'order_no': order_no,
                 'order_id': state['order_id'],
                 'portfolio_id': state['portfolio_id'],
                 'symbol': state['symbol'],
-                'quantity': direction * increment,
+                'direction': direction,
                 'price': report.average_price,
-                'fees': report.fees,
+                'cumulative_fees': report.fees,
                 'cumulative_filled': report.filled_quantity
             }
-            booked = True
             if ledger is not None:
-                booked = ledger.record_fill(
+                ledger.record_fill(
                     state['order_id'], order_no, report.filled_quantity,
                     direction * increment, report.average_price,
-                    report.fees, self._now()
+                    fees, self._now()
                 )
-            if booked:
-                with self._buffer_lock:
-                    self._fill_buffer.append(fill)
+            # Handed over whether or not the ledger had seen it. A row
+            # already written says the ledger knows; it says nothing
+            # about the portfolio, and conflating the two is how a
+            # re-emission would be suppressed exactly when it is needed.
+            with self._buffer_lock:
+                self._fill_buffer.append(fill)
             state['booked_quantity'] = report.filled_quantity
+            state['booked_fees'] = report.fees
 
         return report.is_done
 
@@ -563,19 +633,45 @@ class LiveBroker(Broker):
             pending = self._fill_buffer
             self._fill_buffer = []
 
+        booked = 0
         for fill in pending:
+            # Difference against what the *portfolio* has, not against
+            # what the poller last saw. The two are different facts and
+            # keeping them apart is what makes a lost handoff
+            # recoverable: the venue reports cumulatively, so the next
+            # message carries a total this side has not caught up to,
+            # and the arithmetic here closes the gap on its own.
+            #
+            # Advance it here, on the thread that books, and never on
+            # the producing side. A watermark moved by the producer
+            # says "we have seen this" when what mattered was "the
+            # portfolio has this" -- and once these messages travel a
+            # mailbox that may drop, the difference is a fill that is
+            # never re-emitted and never booked (report 20260826-01, M1).
+            order_no = fill['order_no']
+            already = self._portfolio_booked.get(order_no, 0)
+            increment = fill['cumulative_filled'] - already
+            if increment <= 0:
+                continue
+
+            charged = self._portfolio_charged.get(order_no, 0.0)
+            fees = fill['cumulative_fees'] - charged
+
             dt = self._now()
             self.current_dt = dt
             txn = Transaction(
                 fill['symbol'],
-                fill['quantity'],
+                fill['direction'] * increment,
                 dt,
                 fill['price'],
                 fill['order_id'],
-                commission=fill['fees']
+                commission=fees
             )
             self.portfolios[fill['portfolio_id']].transact_asset(txn)
-        return len(pending)
+            self._portfolio_booked[order_no] = fill['cumulative_filled']
+            self._portfolio_charged[order_no] = fill['cumulative_fees']
+            booked += 1
+        return booked
 
     def settle(self, deadline, poll_interval=0.0, sleep=None,
                shutdown_timeout=30.0):
@@ -586,6 +682,15 @@ class LiveBroker(Broker):
         open when it expires is marked stale rather than waited on: a
         late fill is absorbed by the next 'update', and the unfilled
         remainder is picked up by the next rebalance.
+
+        The kill switch ends settlement too, and it does not mark
+        anything stale. Being told to stop is not the same fact as
+        having given up: the orders are still working at the venue, and
+        STALE is terminal, so marking them would remove them from
+        'get_open_orders' and leave the next launch with no way to ask
+        about them. Distinguishing the two exits is what makes the
+        operations manual's promise -- left open, tidied by the next
+        launch -- actually true.
 
         Polling runs on a worker thread so that the main thread stays
         free to watch the kill switch and the deadline.
@@ -619,6 +724,8 @@ class LiveBroker(Broker):
         """
         sleeper = sleep if sleep is not None else (lambda _: None)
         booked = 0
+        warned_on_round_size = False
+        stopped_by_operator = False
         worker = TaskQueueWorker(on_error=self._log_error)
         self._worker = worker
         worker.start()
@@ -629,10 +736,28 @@ class LiveBroker(Broker):
                     break
                 if self.guard.is_kill_switch_engaged():
                     self._log('Kill switch engaged; stopping settlement.')
+                    stopped_by_operator = True
                     break
 
                 done = []
                 posted = list(self.open_orders)
+                # Once per settlement, not once per round: the point is
+                # to learn that the cycle is oversized, and repeating it
+                # every round would bury the rest of the log. It goes to
+                # the logger rather than through '_log' because a
+                # tripwire a settings flag can silence is not a
+                # tripwire.
+                if not warned_on_round_size and (
+                    len(posted) > POLL_ROUND_WARN
+                ):
+                    warned_on_round_size = True
+                    logger.warning(
+                        'Settling %d open orders in one round, beyond the '
+                        '%d this cycle is sized for. Nothing is dropped; '
+                        'expect the round to take proportionally longer '
+                        'and the time budget to bind sooner.',
+                        len(posted), POLL_ROUND_WARN
+                    )
                 round_started = time.monotonic()
                 for order_no in posted:
                     worker.post_task({
@@ -679,6 +804,28 @@ class LiveBroker(Broker):
                 )
             self._worker = None
             booked += self._drain_fill_buffer()
+
+        # Why the loop ended decides how the remainder is closed, and
+        # the two reasons are not interchangeable.
+        #
+        # The budget expiring means we stopped caring: STALE is honest,
+        # and a late fill is absorbed by the next 'update' or the next
+        # rebalance.
+        #
+        # The kill switch means somebody told us to stop. The orders
+        # are still working at the venue, and STALE is terminal --
+        # 'get_open_orders' skips terminal rows, so marking them would
+        # be throwing away the only hook by which the next launch's
+        # reconciliation could ever ask about them again. They stay
+        # SUBMITTED, which is what they are.
+        if stopped_by_operator:
+            if self.open_orders:
+                self._log(
+                    '%d order(s) left working at the venue; they stay '
+                    'SUBMITTED so the next launch settles them.'
+                    % len(self.open_orders)
+                )
+            return booked
 
         for order_no in list(self.open_orders):
             self._close_order(

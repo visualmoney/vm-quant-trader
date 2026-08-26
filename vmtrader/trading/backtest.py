@@ -2,12 +2,16 @@ import os
 
 import pandas as pd
 
+from vmtrader.alpha_model.base_strategy import as_strategy
+from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.asset.equity import Equity
+from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.simulated_broker import SimulatedBroker
 from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 from vmtrader.data.backtest_data_handler import BacktestDataHandler
 from vmtrader.data.daily_bar_csv import CSVDailyBarDataSource
 from vmtrader.exchange.simulated_exchange import SimulatedExchange
+from vmtrader.messaging import RebalanceDue
 from vmtrader.simulation.daily_bday import DailyBusinessDaySimulationEngine
 from vmtrader.system.qts import QuantTradingSystem
 from vmtrader.system.rebalance.buy_and_hold import BuyAndHoldRebalance
@@ -406,6 +410,40 @@ class BacktestTradingSession(TradingSession):
 
         stats = {'target_allocations': []}
 
+        # The strategy actor, synchronous: no thread, and every event
+        # handled on this one. It is built per run because a stopped
+        # executor is replaced rather than restarted, and 'stats' is a
+        # per-run collector its outbox has to reach.
+        # The broker actor holds the write path; the strategy actor
+        # holds only a way to reach its mailbox. Handing the executor
+        # 'size_and_submit' directly is finding B1 of report
+        # 20260826-01 -- the withdrawn decision 5, re-entered through
+        # an injected callable.
+        # A backtest's policy for a failure is to stop. Principle 1:
+        # a run that carries on over missing data produces a result
+        # from a market that did not exist, which is worse than no
+        # result. 'on_error' is where a plane says that -- the actors
+        # behave identically in both modes and defer the meaning here.
+        def fail_loudly(error):
+            raise error
+
+        broker_actor = BrokerActor(
+            size_and_submit=lambda command: self.qts.size_and_submit(
+                command, stats=stats
+            ),
+            synchronous=True,
+            on_error=fail_loudly
+        )
+        executor = BaseStrategyExecutor(
+            strategy=as_strategy(
+                self.qts.portfolio_construction_model.alpha_model
+            ),
+            decide=self.qts.decide_weights,
+            broker=broker_actor,
+            synchronous=True,
+            on_error=fail_loudly
+        )
+
         for event in self.sim_engine:
             # Output the system event and timestamp
             dt = event.ts
@@ -429,7 +467,7 @@ class BacktestTradingSession(TradingSession):
                                 "(%s) - trading logic "
                                 "and rebalance" % event.ts
                             )
-                        self.qts(dt, stats=stats)
+                        executor.post_event(RebalanceDue(dt=dt))
             else:
                 if self._is_rebalance_event(dt):
                     if settings.PRINT_EVENTS:
@@ -437,7 +475,7 @@ class BacktestTradingSession(TradingSession):
                             "(%s) - trading logic "
                             "and rebalance" % event.ts
                         )
-                    self.qts(dt, stats=stats)
+                    executor.post_event(RebalanceDue(dt=dt))
 
             # Out of market hours we want a daily
             # performance update, but only if we

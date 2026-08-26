@@ -1,9 +1,13 @@
 import datetime
 
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
 from vmtrader import settings
+from vmtrader.broker.actor import BrokerActor
+from vmtrader.messaging import MailboxClosed, TargetWeights
 from vmtrader.broker.live.client import AccountBalance, OrderReport
 from vmtrader.broker.live.guards import SafetyGuard
 from vmtrader.broker.live.ledger import OrderLedger
@@ -61,16 +65,30 @@ class StubVenue:
 class RecordingSystem:
     """
     Stands in for QuantTradingSystem, recording when it was called.
+
+    Offers both halves of a rebalance, because the session reaches one
+    through the strategy executor now. Recording on the second half
+    rather than the first is deliberate: it is the half that would
+    place orders, so 'calls' still means "a rebalance actually
+    happened" and not merely "weights were considered".
     """
 
     def __init__(self):
         self.calls = []
+        self.portfolio_construction_model = SimpleNamespace(alpha_model=None)
+
+    def decide_weights(self, dt):
+        return TargetWeights(dt=dt, weights=())
+
+    def size_and_submit(self, command, stats=None):
+        self.calls.append(command.dt)
 
     def __call__(self, dt, stats=None):
-        self.calls.append(dt)
+        self.size_and_submit(self.decide_weights(dt), stats=stats)
 
 
-def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):
+def _session(tmp_path, now, guard=None, holidays=None,
+             rebalance_dates=None, synchronous=True):
     """
     Build a live session around a stub venue.
     """
@@ -86,7 +104,8 @@ def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):
     )
     qts = RecordingSystem()
     session = LiveTradingSession(
-        broker, qts, rebalance_dates=rebalance_dates, clock=lambda: now
+        broker, qts, rebalance_dates=rebalance_dates,
+        clock=lambda: now, synchronous=synchronous
     )
     return session, broker, qts, venue
 
@@ -355,3 +374,214 @@ def test_a_session_without_signals_does_not_ask_for_history(tmp_path):
 
     assert outcome['traded'] is True
     assert venue.chart_calls == []
+
+
+def test_the_executor_outbox_is_a_mailbox_not_the_write_path(tmp_path):
+    """
+    Tests the wiring that finding B1 of report 20260826-01 caught.
+
+    The strategy actor's outbox used to be 'qts.size_and_submit', a
+    bound method of the half decision 9 had just split off. Follow it
+    and you reach get_portfolio_as_dict, then open_orders, then the
+    ledger, then transact_asset -- the withdrawn decision 5, line for
+    line, arriving through an injected callable instead of a name.
+
+    An import boundary cannot see that, because nothing was imported.
+    This asserts on the instance instead: what the executor holds must
+    be a broker actor's mailbox door and nothing else.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now)
+
+    executor, broker_actor = session._actors()
+    outbox = executor._post_command
+
+    assert outbox.__func__ is BrokerActor.post_command
+    assert outbox.__self__ is broker_actor
+
+
+def test_the_executor_cannot_reach_accounting_through_its_outbox(tmp_path):
+    """
+    Tests that the outbox stays a door rather than becoming a corridor.
+
+    A later refactor could keep the type and still hand back something
+    that writes: what matters is that everything reachable through the
+    object the executor holds is inert with respect to the portfolio,
+    the ledger and the open orders.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, broker, _, _ = _session(tmp_path, now)
+
+    executor, _ = session._actors()
+    reachable = {
+        name for name in dir(executor._post_command.__self__)
+        if not name.startswith('_')
+    }
+
+    assert reachable == {
+        'post_command', 'drain', 'mailbox', 'name', 'synchronous',
+        'attempted', 'completed', 'refuse_commands'
+    }
+    for forbidden in ('portfolios', 'open_orders', 'ledger', 'submit_order'):
+        assert not hasattr(executor._post_command.__self__, forbidden)
+
+
+@pytest.mark.parametrize('synchronous', [True, False])
+def test_a_rebalance_completes_in_either_mode(tmp_path, synchronous):
+    """
+    Tests the acceptance criterion for finding B3.
+
+    A cycle has to reach the same place whichever mode it runs in.
+    With a thread, 'post_event' only queues: before this fix 'settle'
+    then opened on an empty order book, returned zero, and the process
+    exited cutting the executor mid-decision -- while the outcome dict
+    reported a trade. Silent, and on the plane that runs live.
+
+    Parametrised rather than written twice on purpose. Two tests drift;
+    one test run twice cannot.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=synchronous)
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == [now]
+    assert outcome['traded'] is True
+    assert outcome['reason'] is None
+
+
+def test_a_strategy_that_decides_nothing_is_not_reported_as_a_trade(tmp_path):
+    """
+    Tests that the outcome reflects the act, not the intent.
+
+    'traded' used to be set unconditionally, right after posting the
+    event -- which in threaded mode proved only that something had
+    been queued. It is derived from what the broker side actually
+    carried out now, so a strategy that fails to decide says so
+    instead of reporting a rebalance that never happened.
+
+    Threaded because that is where the branch is reachable: the
+    consumer loop absorbs a raising handler by design, so no command
+    is ever posted. Synchronously the same failure propagates out of
+    the session instead, and the two modes differing here is finding
+    M4, still open.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=False)
+
+    def explode(dt):
+        raise ValueError('the alpha model could not be evaluated')
+
+    session.qts.decide_weights = explode
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == []
+    assert outcome['traded'] is False
+    assert 'no decision' in outcome['reason']
+
+
+def test_a_failing_cycle_does_not_leak_the_strategy_thread(tmp_path):
+    """
+    Tests the 'finally' around the cycle.
+
+    Anything raised on the main thread between starting the executor
+    and the barrier used to leave a started thread running on into
+    settlement, still holding an outbox into a mailbox nobody would
+    drain. The stop is unconditional now, and it is safe to call on
+    every path -- which is the property S13 had to establish before S2
+    could be written.
+
+    The failure is injected at 'post_event' rather than inside the
+    strategy on purpose: a strategy raising is handled by the consumer
+    loop and never reaches this thread, so it would not exercise the
+    window at all.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now, synchronous=False)
+
+    seen = []
+    original = session._actors
+
+    def actors():
+        executor, broker_actor = original()
+        seen.append(executor)
+
+        def explode(event):
+            raise RuntimeError('the clock produced a malformed event')
+
+        executor.post_event = explode
+        return executor, broker_actor
+
+    session._actors = actors
+
+    with pytest.raises(RuntimeError, match='malformed'):
+        session._decide_and_submit(now)
+
+    assert len(seen) == 1
+    assert seen[0].is_alive() is False
+    assert seen[0].mailbox.is_closed is True
+
+
+def test_a_rebalance_that_failed_is_not_reported_as_a_trade(tmp_path):
+    """
+    Tests that 'traded' follows the act rather than the attempt.
+
+    The command reaches the broker side and fails there. The drain
+    absorbs it -- an ordinary failure does not end a drain, because
+    everything behind that consumer stops when it does -- so the cycle
+    carries on to settlement, and the outcome must still say the
+    rebalance did not happen.
+
+    Threaded, because that is where the absorption lives: posting
+    synchronously dispatches on the caller's thread with no guard, so
+    the same failure propagates out of the session instead. The two
+    modes differing there is finding M4, still open.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=False)
+
+    def explode(command, stats=None):
+        raise ValueError('the sizer could not price the universe')
+
+    session.qts.size_and_submit = explode
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == []
+    assert outcome['traded'] is False
+    assert 'no decision' in outcome['reason']
+
+
+def test_a_late_decision_is_refused_rather_than_queued(tmp_path):
+    """
+    Tests the window between the barrier and the drain.
+
+    A strategy that overran keeps running, and when it finishes it
+    still holds a live outbox. Before the latch that outbox took the
+    command, put it in a queue the cycle had already finished draining,
+    and the process exited with it still there -- no exception, no
+    counter, a rebalance that simply did not happen.
+
+    Simulated by posting after the cycle rather than by racing a real
+    overrun: the point is what the door does, not how long the
+    strategy took to reach it.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now)
+
+    captured = []
+    original = session._actors
+
+    def actors():
+        executor, broker_actor = original()
+        captured.append(broker_actor)
+        return executor, broker_actor
+
+    session._actors = actors
+    session._decide_and_submit(now)
+
+    with pytest.raises(MailboxClosed, match='barrier'):
+        captured[0].post_command(
+            TargetWeights(dt=now, weights=(('EQ:005930', 1.0),))
+        )

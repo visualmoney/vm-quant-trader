@@ -17,6 +17,25 @@ class LiveDataHandler:
     to check a limit -- and the venue rate limit is the binding
     constraint on how many times it may be asked.
 
+    **One of these belongs to one actor.** Nothing here is guarded, and
+    the cache is cleared wholesale at the start of a cycle and before
+    marking, so a second actor reading it mid-decision re-fetches
+    everything it had already paid for. Worse than the duplication is
+    where the duplicate goes: the gateway's throttle holds a
+    module-level lock across its sleep, so two actors asking for prices
+    contend for the same lock that order submission needs -- and a slow
+    strategy delays the orders, which is the one thing the two-actor
+    split exists to prevent.
+
+    The design's answer is that the strategy actor does not hold one of
+    these at all: it is given a price snapshot taken before the
+    rebalance, the same way ADR-0006 has the sizer work from a single
+    snapshot. Until that lands, sharing one instance across both actors
+    is safe only because Phase 0 runs on one thread.
+
+    See docs/dev/threading-and-event-architecture.md §3's ownership
+    table and report 20260826-01, M3.
+
     Parameters
     ----------
     client : `BrokerClient`

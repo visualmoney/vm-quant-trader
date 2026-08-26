@@ -11,7 +11,7 @@ from vmtrader.broker.live import ledger as ledger_states
 from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
 from vmtrader.broker.live.guards import KillSwitchEngaged, SafetyGuard
 from vmtrader.broker.live.ledger import OrderLedger
-from vmtrader.broker.live_broker import LiveBroker
+from vmtrader.broker.live_broker import LiveBroker, POLL_ROUND_WARN
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 from vmtrader.execution.order import Order
@@ -207,6 +207,121 @@ def test_incremental_fills_are_booked_once_each(tmp_path):
     assert holding['quantity'] == 10
     fills = broker.ledger.get_fills(order.order_id)
     assert [row['quantity'] for row in fills] == [3, 4, 3]
+
+
+def test_incremental_fees_are_charged_once_each(tmp_path):
+    """
+    Tests that cumulative costs become increments, like quantities.
+
+    The venue reports estimated costs for the order as a whole, so
+    passing the figure through on every poll charges the running total
+    again each time. An order filling in three parts paid its costs
+    three times over, and the money came out of cash.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    fills = broker.ledger.get_fills(order.order_id)
+    assert [row['fees'] for row in fills] == [30.0, 40.0, 30.0]
+    # The venue's final figure, charged exactly once between them.
+    assert sum(row['fees'] for row in fills) == 100.0
+
+
+def test_a_multi_increment_fill_costs_cash_only_once(tmp_path):
+    """
+    Tests the arithmetic the increment conversion exists to protect.
+
+    Booking is what moves cash, so the ledger being right is only half
+    the claim. Ten shares at 10,000 with 100 of costs must leave cash
+    exactly 100,100 lighter however many polls it took to get there.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path, cash=1000000.0)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.get_portfolio_cash_balance(broker.account_id) == (
+        1000000.0 - 100000.0 - 100.0
+    )
+
+
+def test_a_revised_cost_estimate_is_not_lost(tmp_path):
+    """
+    Tests that a cost revision without new quantity survives.
+
+    The figure is an estimate and the venue may restate it, so a poll
+    can bring a new cost and no new shares. The booked total advances
+    only alongside an increment, which is what folds such a revision
+    into the next one instead of dropping it.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 5, 10000.0, 5, 0, 50.0, False),
+            # Same quantity, costs restated upward.
+            OrderReport('0001', 5, 10000.0, 5, 0, 65.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 120.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    fills = broker.ledger.get_fills(order.order_id)
+    # The middle poll books nothing; its 15 of revision rides along
+    # with the final increment rather than vanishing.
+    assert [row['fees'] for row in fills] == [50.0, 70.0]
+    assert sum(row['fees'] for row in fills) == 120.0
+
+
+def test_recovery_does_not_recharge_costs_already_booked(tmp_path):
+    """
+    Tests that a restart resumes the cost total, not just the quantity.
+
+    Recovery rebuilds what an order has already booked from the
+    ledger. Rebuilding the quantity but not the costs would make the
+    venue's cumulative figure look entirely new, and the restart would
+    charge the earlier fills' costs a second time.
+    """
+    from vmtrader.broker.live.reconcile import _already_booked_fees
+
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.clock = _poll_driven_clock(client, expire_after=2)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    # Two increments charged 30 and 40; the venue's cumulative figure
+    # is 70, and that is what a restart must resume from. Summing rows
+    # that each held the cumulative figure would give 100 and charge
+    # the first fill's costs again.
+    assert _already_booked_fees(broker, order.order_id) == 70.0
 
 
 def test_zero_fill_leaves_the_portfolio_untouched(tmp_path):
@@ -426,10 +541,12 @@ def test_update_absorbs_a_late_fill_of_a_stale_order(tmp_path):
     broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
     assert broker.get_portfolio_as_dict(broker.account_id) == {}
 
-    # The order is stale, but still known to the venue.
+    # The order is stale, but still known to the venue. Both booked
+    # totals start at zero, the same shape 'submit_order' builds.
     broker.open_orders['0001'] = {
         'order_id': 'late', 'symbol': 'EQ:005930', 'quantity': 10,
-        'portfolio_id': broker.account_id, 'booked_quantity': 0
+        'portfolio_id': broker.account_id, 'booked_quantity': 0,
+        'booked_fees': 0.0
     }
     broker.clock = lambda: pd.Timestamp('2026-08-20 12:30:00')
     broker.update(pd.Timestamp('2026-08-20 12:30:00'))
@@ -746,3 +863,199 @@ def test_each_settle_round_leaves_a_drain_sample(tmp_path, caplog):
     assert 'heartbeat=900.0' in samples[0]
     assert 'overran=False' in samples[0]
     assert re.search(r'elapsed=\d+\.\d{3}', samples[0])
+
+
+def test_an_oversized_settlement_round_says_so_once(tmp_path, caplog):
+    """
+    Tests the tripwire on the number of orders in one round.
+
+    The worker's queue is not capped, and deliberately: its producer
+    posts one round and then blocks on the drain barrier, so the depth
+    cannot exceed the open order count. Capping it would starve the
+    same deterministic tail every round, and those orders would reach
+    the deadline never polled once.
+
+    What is wanted instead is knowing that the cycle has outgrown its
+    shape. Once per settlement, because repeating it per round would
+    bury the rest of the log.
+    """
+    count = POLL_ROUND_WARN + 5
+    plan = {}
+    client = FakeClient()
+    broker = _broker(client, tmp_path)
+
+    for index in range(count):
+        order_no = 'X%04d' % index
+        order_id = 'intent-%d' % index
+        broker.ledger.record_intent(order_id, 'EQ:005930', 1, broker.current_dt)
+        broker.ledger.record_submitted(order_id, order_no, broker.current_dt)
+        broker.open_orders[order_no] = {
+            'order_id': order_id, 'symbol': 'EQ:005930', 'quantity': 1,
+            'portfolio_id': broker.account_id, 'booked_quantity': 0,
+            'booked_fees': 0.0
+        }
+        plan[order_no] = [OrderReport(order_no, 0, 0.0, 1, 0, 0.0, True)]
+    client.fill_plan = plan
+
+    with caplog.at_level(logging.WARNING):
+        broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    oversized = [
+        record for record in caplog.records
+        if 'beyond the' in record.getMessage()
+    ]
+    assert len(oversized) == 1
+    assert str(count) in oversized[0].getMessage()
+    # Nothing was dropped: every order was polled and closed.
+    assert broker.open_orders == {}
+
+
+def test_a_normal_settlement_round_is_quiet(tmp_path, caplog):
+    """
+    Tests that the tripwire does not fire on an ordinary cycle.
+
+    A warning that shows up every day is one an operator learns to
+    scroll past, which is the same as not having it.
+    """
+    client = FakeClient()
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+
+    with caplog.at_level(logging.WARNING):
+        broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert [
+        record for record in caplog.records
+        if 'beyond the' in record.getMessage()
+    ] == []
+
+
+def test_the_kill_switch_leaves_working_orders_open(tmp_path):
+    """
+    Tests that being told to stop does not close what is still working.
+
+    STALE is terminal, and 'get_open_orders' skips terminal rows, so
+    marking an order stale removes the only hook by which the next
+    launch's reconciliation could ask the venue about it again. When
+    the budget expires that is honest -- we gave up. When an operator
+    throws the switch it is not: the order is still at the venue, and
+    the operations manual promises the next launch will tidy it.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    switch = tmp_path / 'STOP'
+    broker = _broker(
+        client, tmp_path, guard=SafetyGuard(kill_switch_path=str(switch))
+    )
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    switch.touch()
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.ledger.get_order(order.order_id)['state'] == (
+        ledger_states.SUBMITTED
+    )
+    # The recovery hook survives: the next launch still sees it.
+    assert [
+        row['order_id'] for row in broker.ledger.get_open_orders()
+    ] == [order.order_id]
+
+
+def test_the_time_budget_still_marks_orders_stale(tmp_path):
+    """
+    Tests the other exit, which is unchanged.
+
+    Giving up at the deadline is a decision the engine made, and STALE
+    records it. Only the operator's stop is exempt.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    broker.clock = _poll_driven_clock(client, expire_after=2)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.ledger.get_order(order.order_id)['state'] == (
+        ledger_states.STALE
+    )
+    assert broker.ledger.get_open_orders() == []
+
+
+def test_a_lost_fill_handoff_is_recovered_by_the_next_poll(tmp_path):
+    """
+    Tests the property the consumer-side watermark exists for.
+
+    The venue reports cumulative totals, so a lost notification is
+    recoverable in principle -- but only if the side that books is the
+    side that differences. While the poller advanced the watermark, a
+    dropped handoff meant the next poll computed an increment of zero
+    and the fill was never re-emitted and never booked.
+
+    The loss is simulated by emptying the buffer between the poll and
+    the drain, which is what a capped mailbox will do once these
+    messages travel one.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 4, 10000.0, 6, 0, 40.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    # First poll: the handoff is thrown away before anyone books it.
+    broker._poll_once('0001', broker.ledger)
+    with broker._buffer_lock:
+        broker._fill_buffer = []
+    assert broker.get_portfolio_as_dict(broker.account_id) == {}
+
+    # Second poll: the venue's cumulative figure closes the gap.
+    broker._poll_once('0001', broker.ledger)
+    broker._drain_fill_buffer()
+
+    holding = broker.get_portfolio_as_dict(broker.account_id)['EQ:005930']
+    assert holding['quantity'] == 10
+    assert broker.get_portfolio_cash_balance(broker.account_id) == (
+        1000000.0 - 100000.0 - 100.0
+    )
+
+
+def test_a_duplicated_fill_handoff_books_nothing_twice(tmp_path):
+    """
+    Tests the other direction of the same arithmetic.
+
+    Differencing against what the portfolio has means a message seen
+    twice is simply a no-op, so the handoff no longer has to be exactly
+    once -- only at least once.
+    """
+    client = FakeClient(price=10000.0)
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+    broker._poll_once('0001', broker.ledger)
+    with broker._buffer_lock:
+        broker._fill_buffer = broker._fill_buffer * 3   # delivered thrice
+
+    broker._drain_fill_buffer()
+
+    holding = broker.get_portfolio_as_dict(broker.account_id)['EQ:005930']
+    assert holding['quantity'] == 10

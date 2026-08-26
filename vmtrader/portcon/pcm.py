@@ -231,28 +231,31 @@ class PortfolioConstructionModel:
         assets = self.universe.get_assets(dt)
         return {asset: 0.0 for asset in assets}
 
-    def __call__(self, dt, stats=None):
+    def decide_weights(self, dt):
         """
-        Execute the portfolio construction process at a particular
-        provided date-time.
+        Choose target weights, without consulting the broker.
 
-        Use the optional alpha model, risk model and cost model instances
-        to create a list of desired weights that are then sent to the
-        target weight generator instance to be optimised.
+        Everything here is a function of the date-time and market
+        data: the alpha model's view, the risk model's override of
+        it, and the optimisation. None of it reads cash, holdings or
+        open orders, which is what allows this half to run somewhere
+        that does not own them.
+
+        That is not an accident of the current models, it is the
+        boundary itself. A step added here that needs the account
+        belongs on the other side of it.
 
         Parameters
         ----------
         dt : `pd.Timestamp`
-            The date-time used to for Asset list determination and
+            The date-time used for Asset list determination and
             weight generation.
-        stats : `dict`, optional
-            An optional statistics dictionary to append values to
-            throughout the simulation lifetime.
 
         Returns
         -------
-        `list[Order]`
-            The list of rebalancing orders to be sent to Execution.
+        `dict{str: float}`
+            The optimised target weights, before holdings not named
+            in them are zeroed.
         """
         # If an AlphaModel is provided use its suggestions, otherwise
         # create a null weight vector (zero for all Assets).
@@ -267,8 +270,31 @@ class PortfolioConstructionModel:
             weights = self.risk_model(dt, weights)
 
         # Run the portfolio optimisation
-        optimised_weights = self.optimiser(dt, initial_weights=weights)
+        return self.optimiser(dt, initial_weights=weights)
 
+    def build_orders(self, dt, optimised_weights, stats=None):
+        """
+        Turn target weights into the orders that reach them.
+
+        The broker half. Every step reads the account: which assets
+        are held, what the portfolio is worth, and what is already
+        there to difference against.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The date-time used to populate the Order instances.
+        optimised_weights : `dict{str: float}`
+            The target weights chosen by 'decide_weights'.
+        stats : `dict`, optional
+            An optional statistics dictionary to append values to
+            throughout the simulation lifetime.
+
+        Returns
+        -------
+        `list[Order]`
+            The list of rebalancing orders to be sent to Execution.
+        """
         # Ensure any Assets in the Broker Portfolio are sold out if
         # they are not specifically referenced on the optimised weights
         full_assets = self._obtain_full_asset_list(dt)
@@ -300,3 +326,28 @@ class PortfolioConstructionModel:
         # TODO: Implement cost model
 
         return rebalance_orders
+
+    def __call__(self, dt, stats=None):
+        """
+        Run both halves in order, as a single call.
+
+        Kept so that callers holding a construction model can use it
+        unchanged. The two halves are separately callable because
+        they run in different places once the strategy has a thread
+        of its own; nothing about running them back to back is wrong.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The date-time used for Asset list determination and
+            weight generation.
+        stats : `dict`, optional
+            An optional statistics dictionary to append values to
+            throughout the simulation lifetime.
+
+        Returns
+        -------
+        `list[Order]`
+            The list of rebalancing orders to be sent to Execution.
+        """
+        return self.build_orders(dt, self.decide_weights(dt), stats=stats)

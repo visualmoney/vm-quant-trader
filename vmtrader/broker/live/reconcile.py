@@ -160,13 +160,23 @@ def _recover_open_orders(broker):
             )
             continue
 
+        booked = _already_booked(broker, row['order_id'])
+        charged = _already_booked_fees(broker, row['order_id'])
         broker.open_orders[order_no] = {
             'order_id': row['order_id'],
             'symbol': row['symbol'],
             'quantity': row['quantity'],
             'portfolio_id': broker.account_id,
-            'booked_quantity': _already_booked(broker, row['order_id'])
+            'booked_quantity': booked,
+            'booked_fees': charged
         }
+        # The portfolio's own watermark has to be seeded as well, and
+        # from the same figures. 'seed_from_venue' has already put the
+        # venue's holdings into the portfolio, so a watermark starting
+        # at zero would make the next fill message look like the whole
+        # cumulative total and book what is already there a second time.
+        broker._portfolio_booked[order_no] = booked
+        broker._portfolio_charged[order_no] = charged
         if broker._poll_once(order_no, broker.ledger):
             resolved.append(order_no)
 
@@ -198,3 +208,34 @@ def _already_booked(broker, order_id):
     """
     fills = broker.ledger.get_fills(order_id)
     return sum(abs(row['quantity']) for row in fills)
+
+
+def _already_booked_fees(broker, order_id):
+    """
+    Return the costs the ledger has already accounted for.
+
+    The counterpart to '_already_booked', and needed for the same
+    reason: the venue reports costs cumulatively, so recovery must
+    know what was charged before the restart or it charges it again.
+
+    Fill rows hold each increment's own share, so the sum of them is
+    the cumulative figure the venue would now be reporting. A ledger
+    written before increments were separated holds cumulative figures
+    in every row, and this sum will overstate against one -- it will
+    under-charge the remaining fills rather than double-charge them,
+    which is the safer direction to be wrong in.
+
+    Parameters
+    ----------
+    broker : `LiveBroker`
+        The broker whose ledger is read.
+    order_id : `str`
+        The engine order ID.
+
+    Returns
+    -------
+    `float`
+        The costs already booked.
+    """
+    fills = broker.ledger.get_fills(order_id)
+    return sum(row['fees'] or 0.0 for row in fills)
