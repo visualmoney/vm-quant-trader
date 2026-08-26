@@ -31,3 +31,27 @@ class StopRequested(Exception):
     and nothing else is. That is what makes the family checkable: the
     gate and the exception base are two views of one rule.
     """
+
+
+class Misrouted(Exception):
+    """
+    Raised when an actor is handed a message addressed elsewhere.
+
+    A wiring mistake rather than a runtime condition, and the
+    difference matters at a consumer loop: a handler that fails on bad
+    data has a bad day, a handler that receives the wrong kind of
+    message was assembled wrong and will keep being. Decision 11 gives
+    every event exactly one addressee, so arriving anywhere else is
+    that decision being broken, not an event being difficult.
+    """
+
+
+# What a consumer loop does not absorb. The loops swallow handler
+# failures on purpose -- a single consumer that dies takes everything
+# behind it down -- so this is the list of things that are not handler
+# failures: the operator or the engine saying stop, and the assembly
+# being wrong about who receives what.
+#
+# Kept short deliberately. Every addition is a way for one bad event to
+# end a cycle, which is the failure mode the absorbing was for.
+ENDS_THE_CYCLE = (StopRequested, Misrouted)

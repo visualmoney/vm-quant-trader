@@ -42,7 +42,7 @@ import traceback
 
 from threading import Thread
 
-from vmtrader.errors import StopRequested
+from vmtrader.errors import ENDS_THE_CYCLE, Misrouted
 from vmtrader.messaging import Mailbox, OrderFilled, RebalanceDue
 
 logger = logging.getLogger(__name__)
@@ -207,7 +207,7 @@ class BaseStrategyExecutor(Thread):
         # names it keeps for this are undocumented and move between
         # releases, which is the same hazard that renamed _dispatch.
         self._start_called = False
-        self._stop_signal = None
+        self._ended_by = None
 
     # -- the face the producers call ------------------------------------
 
@@ -230,16 +230,7 @@ class BaseStrategyExecutor(Thread):
             that into a stack trace at the mistake.
         """
         if self._synchronous:
-            # Deliberately not wrapped. Making both modes absorb
-            # failures identically looks like the fix for M4 of report
-            # 20260826-01, and it is not: a backtest whose data starts
-            # too late raises out of the sizer, and swallowing that
-            # turns a loud refusal into a quiet wrong answer -- the
-            # regression is real, principle 1, and a test caught it.
-            # The two modes genuinely differ here until there is a
-            # vocabulary for which failures end a cycle, which is the
-            # rest of M4 and is not this change.
-            self._dispatch(event)
+            self._handle_reporting_errors(event)
         elif not self.is_alive():
             raise RuntimeError(
                 "executor '%s' is not consuming: it was never started, "
@@ -291,18 +282,26 @@ class BaseStrategyExecutor(Thread):
         """
         Dispatch one event, reporting a failure instead of raising.
 
-        Both modes go through here, and that is the correction rather
-        than an incidental refactor. The synchronous path used to call
-        dispatch directly with no guard, so the two modes ran the same
-        handler and then disagreed about what a raising one meant: one
-        reported through 'on_error' and carried on, the other threw
-        into the session and abandoned the cycle. 'on_error' was dead
-        code in every synchronous assembly (report 20260826-01, M4).
+        Both modes go through here, and 'on_error' is where the
+        policy lives. That separation is the point of M4's fix: the
+        two *modes* now behave identically -- same handler, same
+        callback, same contract -- while the two *planes* are still
+        free to differ, because they legitimately want different
+        things from a failure.
 
-        What is still open is which exceptions should end a cycle
-        rather than be absorbed -- the kill switch escalates by
-        raising, and nothing here knows that yet. That vocabulary is
-        the remainder of M4.
+        A backtest wants to stop. Principle 1 says a run that carries
+        on over missing data is worse than one that halts, so its
+        assembly passes an 'on_error' that re-raises and the failure
+        reaches the caller. A live cron cycle wants to report and
+        exit, because the next launch reconciles, so its assembly
+        passes one that logs.
+
+        Conflating those was the first attempt at this and it failed
+        loudly: making both modes absorb everything turned a backtest's
+        refusal to trade on absent prices into a quiet wrong answer.
+        The asymmetry was never between the modes.
+
+        A stop is the exception to all of it and never reaches here.
 
         Parameters
         ----------
@@ -311,22 +310,36 @@ class BaseStrategyExecutor(Thread):
         """
         try:
             self._dispatch(event)
-        except StopRequested as signal:
-            # A stop is not absorbed -- but re-raising it here would
-            # only kill this thread, where nobody is looking: the
-            # session joins, gets True, and learns nothing. So it is
-            # carried back instead, and the session reads it off
-            # 'stop_signal' after the barrier. Testing the obvious
+        except ENDS_THE_CYCLE as signal:
+            if self._synchronous:
+                # The caller is already the thread that can act.
+                raise
+            # Re-raising on this thread would only kill it, where
+            # nobody is looking: the session joins, gets True, and
+            # learns nothing. So it is carried back instead and read
+            # off 'ended_by' after the barrier. Testing the obvious
             # re-raise is what showed it went nowhere.
-            self._stop_signal = signal
+            self._ended_by = signal
             self._mailbox.close()
         except Exception as error:  # noqa: BLE001
             logger.error(
                 'Executor[%s] handler Exception:\n%s',
                 self.name, traceback.format_exc()
             )
-            if self._on_error is not None:
+            if self._on_error is None:
+                return
+            try:
                 self._on_error(error)
+            except Exception as escalated:  # noqa: BLE001
+                # A plane whose policy is to stop says so by raising
+                # from 'on_error'. Synchronously that reaches the
+                # caller by itself; on a thread it would only kill the
+                # loop where nobody is looking, so it takes the same
+                # road a stop does and surfaces at the barrier.
+                if self._synchronous:
+                    raise
+                self._ended_by = escalated
+                self._mailbox.close()
 
     # -- the one path both modes take -----------------------------------
 
@@ -350,7 +363,7 @@ class BaseStrategyExecutor(Thread):
             # broker. Arriving here means a producer sent it to the
             # wrong actor, which is a wiring mistake and not something
             # to absorb quietly.
-            raise TypeError(
+            raise Misrouted(
                 "executor '%s' was sent a %s, which is not addressed to "
                 "it" % (self.name, type(event).__name__)
             )
@@ -426,7 +439,7 @@ class BaseStrategyExecutor(Thread):
     # -- instrumentation --------------------------------------------------
 
     @property
-    def stop_signal(self):
+    def ended_by(self):
         """
         Return the stop that ended this executor, if one did.
 
@@ -441,7 +454,7 @@ class BaseStrategyExecutor(Thread):
         `StopRequested` or `None`
             The signal, or None if the executor ended normally.
         """
-        return self._stop_signal
+        return self._ended_by
 
     @property
     def synchronous(self):

@@ -419,11 +419,20 @@ class BacktestTradingSession(TradingSession):
         # 'size_and_submit' directly is finding B1 of report
         # 20260826-01 -- the withdrawn decision 5, re-entered through
         # an injected callable.
+        # A backtest's policy for a failure is to stop. Principle 1:
+        # a run that carries on over missing data produces a result
+        # from a market that did not exist, which is worse than no
+        # result. 'on_error' is where a plane says that -- the actors
+        # behave identically in both modes and defer the meaning here.
+        def fail_loudly(error):
+            raise error
+
         broker_actor = BrokerActor(
             size_and_submit=lambda command: self.qts.size_and_submit(
                 command, stats=stats
             ),
-            synchronous=True
+            synchronous=True,
+            on_error=fail_loudly
         )
         executor = BaseStrategyExecutor(
             strategy=as_strategy(
@@ -431,7 +440,8 @@ class BacktestTradingSession(TradingSession):
             ),
             decide=self.qts.decide_weights,
             broker=broker_actor,
-            synchronous=True
+            synchronous=True,
+            on_error=fail_loudly
         )
 
         for event in self.sim_engine:

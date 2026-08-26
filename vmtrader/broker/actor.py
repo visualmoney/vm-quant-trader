@@ -29,7 +29,7 @@ appendix C, and report 20260826-01 finding B1.
 import logging
 import traceback
 
-from vmtrader.errors import StopRequested
+from vmtrader.errors import ENDS_THE_CYCLE, Misrouted
 from vmtrader.messaging import Mailbox, MailboxClosed, TargetWeights
 
 logger = logging.getLogger(__name__)
@@ -102,7 +102,7 @@ class BrokerActor:
                 "was still deciding after the session stopped waiting."
             )
         if self._synchronous:
-            self._dispatch(command)
+            self._carry_out_reporting_errors(command)
         else:
             self._mailbox.post(command)
 
@@ -132,22 +132,41 @@ class BrokerActor:
             if message is None:
                 break
             handled += 1
-            try:
-                self._dispatch(message)
-            except StopRequested:
-                # Not absorbed: this is the operator saying stop, and a
-                # stop the loop is obliged to eat is not a stop
-                # (report 20260826-02, S3). It ends the drain and
-                # reaches the session.
-                raise
-            except Exception as error:  # noqa: BLE001
-                logger.error(
-                    'BrokerActor[%s] handler Exception:\n%s',
-                    self.name, traceback.format_exc()
-                )
-                if self._on_error is not None:
-                    self._on_error(error)
+            self._carry_out_reporting_errors(message)
         return handled
+
+    def _carry_out_reporting_errors(self, message):
+        """
+        Carry one message out, reporting a failure instead of raising.
+
+        Both modes go through here, so a failure means the same thing
+        whichever one is in force, and 'on_error' is where each plane
+        says what it wants that to be -- a backtest re-raises, a live
+        cycle logs (report 20260826-01, M4).
+
+        Parameters
+        ----------
+        message : `object`
+            The message to carry out.
+        """
+        try:
+            self._dispatch(message)
+        except ENDS_THE_CYCLE:
+            # Not absorbed. This consumer runs on the main thread,
+            # so raising here actually delivers -- the operator's
+            # stop, or an assembly that routed to the wrong actor,
+            # reaches the session (report 20260826-02, S3).
+            raise
+        except Exception as error:  # noqa: BLE001
+            logger.error(
+                'BrokerActor[%s] handler Exception:\n%s',
+                self.name, traceback.format_exc()
+            )
+            if self._on_error is not None:
+                # A plane that wants a failure to stop the run raises
+                # from here, and this consumer is the main thread, so
+                # letting it through delivers.
+                self._on_error(error)
 
     # -- the one path both modes take ------------------------------------
 
@@ -176,7 +195,7 @@ class BrokerActor:
             # have no handler yet because nothing produces them. When
             # one does, it lands here rather than in a second dispatch
             # somewhere else.
-            raise TypeError(
+            raise Misrouted(
                 "broker actor was sent a %s, which it has no handler "
                 "for" % type(message).__name__
             )

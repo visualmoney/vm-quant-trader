@@ -13,7 +13,7 @@ import pytest
 
 from vmtrader.broker.actor import BROKER_MAILBOX_MAXSIZE, BrokerActor
 from vmtrader.broker.live.guards import KillSwitchEngaged
-from vmtrader.errors import StopRequested
+from vmtrader.errors import Misrouted, StopRequested
 from vmtrader.messaging import EndOfDay, MailboxClosed, TargetWeights
 
 
@@ -135,7 +135,7 @@ def test_a_message_with_no_handler_is_refused():
     """
     actor, _ = _actor(synchronous=True)
 
-    with pytest.raises(TypeError, match='EndOfDay'):
+    with pytest.raises(Misrouted, match='EndOfDay'):
         actor.post_command(EndOfDay(dt=pd.Timestamp('2026-08-24 15:30')))
 
 

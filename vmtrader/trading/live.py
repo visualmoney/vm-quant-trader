@@ -198,12 +198,13 @@ class LiveTradingSession(TradingSession):
         # to be accepted, never consumed, and lost at exit (S1).
         broker_actor.refuse_commands()
 
-        # A stop the strategy ran into cannot be raised on its own
-        # thread and cannot be swallowed, so it waits here. After the
+        # What ended the executor -- an operator's stop, or a message
+        # routed to the wrong actor -- cannot be raised on its own
+        # thread and must not be swallowed, so it waits here. After the
         # barrier, not inside it: raising from the 'finally' would mask
         # whatever else had gone wrong.
-        if executor.stop_signal is not None:
-            raise executor.stop_signal
+        if executor.ended_by is not None:
+            raise executor.ended_by
 
         # The broker actor's consumer is this thread (decision 12).
         broker_actor.drain()

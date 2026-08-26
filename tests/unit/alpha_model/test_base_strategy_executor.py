@@ -20,7 +20,7 @@ from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.live.guards import KillSwitchEngaged
 from vmtrader.broker.live.worker import TaskQueueWorker
-from vmtrader.errors import StopRequested
+from vmtrader.errors import Misrouted, StopRequested
 from vmtrader.messaging import (
     EndOfDay,
     OrderFilled,
@@ -340,10 +340,15 @@ def test_an_event_addressed_to_the_broker_is_refused():
     'EndOfDay' belongs to the broker, which owns the portfolio and
     the ledger it touches. Swallowing it here would leave an equity
     curve silently unwritten, so the wiring error surfaces instead.
+
+    It is its own exception rather than a TypeError because a consumer
+    loop has to tell it apart: a handler failing on bad data is a bad
+    day, a handler receiving the wrong kind of message was assembled
+    wrong and will keep being. Only the second ends a cycle.
     """
     executor, _ = _executor(synchronous=True)
 
-    with pytest.raises(TypeError, match='EndOfDay'):
+    with pytest.raises(Misrouted, match='EndOfDay'):
         executor.post_event(EndOfDay(dt=pd.Timestamp('2026-08-24 15:30')))
 
 
@@ -631,8 +636,8 @@ def test_a_stop_is_carried_back_from_the_executor_thread():
     executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
 
     assert executor.stop(timeout=2.0) is True
-    assert isinstance(executor.stop_signal, StopRequested)
-    assert 'threw the switch' in str(executor.stop_signal)
+    assert isinstance(executor.ended_by, StopRequested)
+    assert 'threw the switch' in str(executor.ended_by)
 
 
 def test_stopping_does_not_raise_the_signal_itself():
@@ -730,3 +735,72 @@ def test_a_strategy_with_hooks_is_left_alone():
     strategy = RecordingStrategy()
 
     assert as_strategy(strategy) is strategy
+
+
+# -- the modes agree about failure; the planes need not --------------
+
+@pytest.mark.parametrize('synchronous', [True, False])
+def test_a_failure_is_reported_the_same_way_in_either_mode(synchronous):
+    """
+    Tests the isomorphism decision 4 claims and M4 found missing.
+
+    The synchronous path used to call dispatch with no guard at all,
+    so the two modes ran the same handler and then disagreed about
+    what a raising one meant: one reported through 'on_error' and
+    carried on, the other threw into the session and abandoned the
+    cycle. 'on_error' was dead code in every synchronous assembly.
+
+    Parametrised rather than written twice, because the whole claim is
+    that one description covers both.
+    """
+    errors = []
+
+    def decide(dt):
+        raise ValueError('the alpha model could not be evaluated')
+
+    executor, _ = _executor(
+        synchronous=synchronous, decide=decide, on_error=errors.append
+    )
+    if not synchronous:
+        executor.start()
+    executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+    executor.stop(timeout=2.0)
+
+    assert [type(error) for error in errors] == [ValueError]
+    assert executor.ended_by is None
+
+
+@pytest.mark.parametrize('synchronous', [True, False])
+def test_a_plane_can_still_choose_to_fail_loudly(synchronous):
+    """
+    Tests that the seam moved rather than closed.
+
+    A backtest wants a failure to stop the run -- principle 1, a
+    result computed over missing data is worse than no result -- and a
+    live cycle wants to report and exit, because the next launch
+    reconciles. Making both modes absorb everything was the first
+    attempt at M4 and it deleted that difference along with the one it
+    meant to fix. The plane says what it wants through 'on_error'.
+    """
+    def decide(dt):
+        raise ValueError('no price for EQ:005930')
+
+    def fail_loudly(error):
+        raise error
+
+    executor, _ = _executor(
+        synchronous=synchronous, decide=decide, on_error=fail_loudly
+    )
+
+    if synchronous:
+        with pytest.raises(ValueError, match='no price'):
+            executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+    else:
+        # On a thread there is nobody to raise at, so the loop ends
+        # and the session finds out at the barrier -- the same road a
+        # stop takes, for the same reason.
+        executor.start()
+        executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+        assert executor.stop(timeout=2.0) is True
+        assert isinstance(executor.ended_by, ValueError)
+        assert 'no price' in str(executor.ended_by)
