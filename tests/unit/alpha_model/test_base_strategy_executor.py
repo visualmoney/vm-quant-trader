@@ -656,6 +656,8 @@ def test_stopping_does_not_raise_the_signal_itself():
     executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
 
     assert executor.stop(timeout=2.0) is True   # does not raise
+
+
 def test_an_ordinary_failure_is_still_absorbed():
     """
     Tests the other side, which must not change.
