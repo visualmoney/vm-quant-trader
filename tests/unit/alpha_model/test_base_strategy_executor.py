@@ -18,7 +18,9 @@ import vmtrader.alpha_model.base_strategy_executor
 from vmtrader.alpha_model.base_strategy import BaseStrategy
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.broker.actor import BrokerActor
+from vmtrader.broker.live.guards import KillSwitchEngaged
 from vmtrader.broker.live.worker import TaskQueueWorker
+from vmtrader.errors import StopRequested
 from vmtrader.messaging import (
     EndOfDay,
     OrderFilled,
@@ -591,3 +593,81 @@ def test_an_executor_refuses_to_stop_itself():
 
     assert len(caught) == 1
     assert 'cannot stop itself' in str(caught[0])
+
+
+def test_a_stop_propagates_at_once_in_synchronous_mode():
+    """
+    Tests the mode where the caller is already the right thread.
+
+    Synchronously there is no loop between the handler and the
+    session, so a stop reaches the caller by simply not being caught.
+    """
+    def decide(dt):
+        raise KillSwitchEngaged('the operator threw the switch')
+
+    executor, _ = _executor(synchronous=True, decide=decide)
+
+    with pytest.raises(StopRequested):
+        executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+
+
+def test_a_stop_is_carried_back_from_the_executor_thread():
+    """
+    Tests that a stop crosses back to a thread that can act on it.
+
+    Re-raising inside the consumer loop is the obvious reading of "do
+    not absorb a stop", and it goes nowhere: the executor thread dies,
+    the excepthook prints, the session joins, gets True and learns
+    nothing. So the signal is carried back and read after the barrier.
+
+    The loop still ends -- a stop is terminal for this executor -- but
+    it ends where somebody is listening.
+    """
+    def decide(dt):
+        raise KillSwitchEngaged('the operator threw the switch')
+
+    executor, _ = _executor(synchronous=False, decide=decide)
+    executor.start()
+    executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+
+    assert executor.stop(timeout=2.0) is True
+    assert isinstance(executor.stop_signal, StopRequested)
+    assert 'threw the switch' in str(executor.stop_signal)
+
+
+def test_stopping_does_not_raise_the_signal_itself():
+    """
+    Tests that the barrier stays safe to call from a 'finally'.
+
+    'stop()' is unconditional in the cycle's 'finally'. If it raised
+    the stop it found, it would mask whatever had actually sent the
+    cycle down that path -- the same masking S2 was about.
+    """
+    def decide(dt):
+        raise KillSwitchEngaged('the operator threw the switch')
+
+    executor, _ = _executor(synchronous=False, decide=decide)
+    executor.start()
+    executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+
+    assert executor.stop(timeout=2.0) is True   # does not raise
+def test_an_ordinary_failure_is_still_absorbed():
+    """
+    Tests the other side, which must not change.
+
+    Only stops escape. A strategy raising anything else still costs
+    that event and nothing more.
+    """
+    errors = []
+
+    def decide(dt):
+        raise ValueError('the alpha model could not be evaluated')
+
+    executor, _ = _executor(
+        synchronous=False, decide=decide, on_error=errors.append
+    )
+    executor.start()
+    executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24')))
+    assert executor.stop(timeout=2.0)
+
+    assert [type(error) for error in errors] == [ValueError]

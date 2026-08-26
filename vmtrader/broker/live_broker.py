@@ -32,7 +32,7 @@ from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 from vmtrader.broker.live import ledger as ledger_states
 from vmtrader.broker.live.ledger import OrderLedger
 from vmtrader.broker.live.guards import (
-    KillSwitchEngaged, OrderLimitExceeded, SafetyGuard
+    OrderLimitExceeded, SafetyGuard, StopRequested
 )
 from vmtrader.broker.live.worker import TaskQueueWorker
 from vmtrader.broker.portfolio.portfolio import Portfolio
@@ -153,10 +153,11 @@ class LiveBroker(Broker):
 
         self.portfolios = {}
         self.open_orders = {}
-        # Set by reconciliation when the engine believes it holds more
-        # than the venue reports. Selling shares that are not there is
-        # the failure this prevents.
-        self.trading_halted = False
+        # Reconciliation sets this when the engine believes it holds
+        # more than the venue reports; selling shares that are not
+        # there is the failure it prevents. The state lives in the
+        # guard, which is the one place a stop signal is read, and this
+        # stays as the name reconciliation and the tests already use.
         self._fill_buffer = []
         self._buffer_lock = threading.Lock()
         self._worker = None
@@ -167,6 +168,42 @@ class LiveBroker(Broker):
         self.ledger.stamp_identity(
             self.venue_name, self.mode, self.account_id
         )
+
+    @property
+    def trading_halted(self):
+        """
+        Return whether reconciliation stopped this session.
+
+        A view onto the guard, which owns every stop signal. Kept as an
+        attribute because that is how reconciliation and its tests
+        speak; what changed is that setting it now reaches the one gate
+        every loop consults, so a halt can raise instead of being read
+        quietly in one place and nowhere else.
+
+        Returns
+        -------
+        `Boolean`
+            Whether trading is stopped.
+        """
+        return self.guard.is_halted()
+
+    @trading_halted.setter
+    def trading_halted(self, halted):
+        """
+        Halt or clear the session.
+
+        Parameters
+        ----------
+        halted : `Boolean`
+            Whether to stop trading.
+        """
+        if halted:
+            self.guard.halt(
+                'Reconciliation found the engine holding more than the '
+                'venue reports.'
+            )
+        else:
+            self.guard.halted_reason = None
 
     def _open_thread_ledger(self):
         """
@@ -444,13 +481,6 @@ class LiveBroker(Broker):
         portfolio_id_str = str(portfolio_id)
         dt = self._now()
 
-        if self.trading_halted:
-            self._log(
-                'Trading is halted after a position mismatch; refusing '
-                'order for %s.' % order.asset
-            )
-            return
-
         if not self.exchange.is_open_at_datetime(dt):
             self._log(
                 'Market closed at %s; refusing order for %s.'
@@ -468,7 +498,7 @@ class LiveBroker(Broker):
 
         try:
             self.guard.check_order(order.asset, quantity, price)
-        except (KillSwitchEngaged, OrderLimitExceeded) as err:
+        except (StopRequested, OrderLimitExceeded) as err:
             self.ledger.record_intent(
                 order.order_id, order.asset, quantity, dt
             )
@@ -476,7 +506,7 @@ class LiveBroker(Broker):
                 order.order_id, ledger_states.REJECTED, dt, note=str(err)
             )
             self._log('Order for %s refused: %s' % (order.asset, err))
-            if isinstance(err, KillSwitchEngaged):
+            if isinstance(err, StopRequested):
                 raise
             return
 

@@ -42,6 +42,7 @@ import traceback
 
 from threading import Thread
 
+from vmtrader.errors import StopRequested
 from vmtrader.messaging import Mailbox, OrderFilled, RebalanceDue
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,7 @@ class BaseStrategyExecutor(Thread):
         # names it keeps for this are undocumented and move between
         # releases, which is the same hazard that renamed _dispatch.
         self._start_called = False
+        self._stop_signal = None
 
     # -- the face the producers call ------------------------------------
 
@@ -269,6 +271,15 @@ class BaseStrategyExecutor(Thread):
         """
         try:
             self._dispatch(event)
+        except StopRequested as signal:
+            # A stop is not absorbed -- but re-raising it here would
+            # only kill this thread, where nobody is looking: the
+            # session joins, gets True, and learns nothing. So it is
+            # carried back instead, and the session reads it off
+            # 'stop_signal' after the barrier. Testing the obvious
+            # re-raise is what showed it went nowhere.
+            self._stop_signal = signal
+            self._mailbox.close()
         except Exception as error:  # noqa: BLE001
             logger.error(
                 'Executor[%s] handler Exception:\n%s',
@@ -373,6 +384,24 @@ class BaseStrategyExecutor(Thread):
         return True
 
     # -- instrumentation --------------------------------------------------
+
+    @property
+    def stop_signal(self):
+        """
+        Return the stop that ended this executor, if one did.
+
+        A stop raised inside a handler cannot be absorbed and cannot
+        usefully be re-raised on this thread, so it is left here for
+        the session to find after the barrier. 'stop()' deliberately
+        does not raise it: it is called from a 'finally', and raising
+        there would mask whatever sent the cycle down that path.
+
+        Returns
+        -------
+        `StopRequested` or `None`
+            The signal, or None if the executor ended normally.
+        """
+        return self._stop_signal
 
     @property
     def synchronous(self):

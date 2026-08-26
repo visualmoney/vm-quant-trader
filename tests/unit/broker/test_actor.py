@@ -12,6 +12,8 @@ import pandas as pd
 import pytest
 
 from vmtrader.broker.actor import BROKER_MAILBOX_MAXSIZE, BrokerActor
+from vmtrader.broker.live.guards import KillSwitchEngaged
+from vmtrader.errors import StopRequested
 from vmtrader.messaging import EndOfDay, TargetWeights
 
 
@@ -172,3 +174,47 @@ def test_post_command_is_the_only_way_in():
     assert public == {
         'post_command', 'drain', 'mailbox', 'synchronous', 'handled'
     }
+
+
+def test_a_stop_ends_the_drain_and_reaches_the_caller():
+    """
+    Tests the loop that matters most for a stop.
+
+    This drain runs on the main thread, so re-raising here actually
+    delivers: the operator's signal reaches the session, which is the
+    only place that can decide the cycle is over. The executor's loop
+    cannot do the same -- it would only kill its own thread -- which is
+    why the two actors handle a stop differently despite sharing the
+    rule that neither absorbs one.
+    """
+    actor, done = _actor(synchronous=False)
+    actor._size_and_submit = lambda command: (_ for _ in ()).throw(
+        KillSwitchEngaged('the operator threw the switch')
+    )
+    actor.post_command(_command())
+
+    with pytest.raises(StopRequested):
+        actor.drain()
+
+
+def test_an_ordinary_failure_still_does_not_end_the_drain():
+    """
+    Tests that only stops escape.
+
+    A command failing for any other reason costs that command and the
+    drain carries on, because everything behind this actor stops when
+    its consumer does.
+    """
+    errors = []
+    actor, _ = _actor(
+        synchronous=False,
+        size_and_submit=lambda command: (_ for _ in ()).throw(
+            ValueError('the venue said no')
+        ),
+        on_error=errors.append
+    )
+    actor.post_command(_command())
+    actor.post_command(_command())
+
+    assert actor.drain() == 2
+    assert [type(error) for error in errors] == [ValueError, ValueError]

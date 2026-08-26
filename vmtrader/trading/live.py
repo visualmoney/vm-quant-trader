@@ -189,6 +189,13 @@ class LiveTradingSession(TradingSession):
                     'reconciles.' % STRATEGY_BUDGET_SECONDS
                 )
 
+        # A stop the strategy ran into cannot be raised on its own
+        # thread and cannot be swallowed, so it waits here. After the
+        # barrier, not inside it: raising from the 'finally' would mask
+        # whatever else had gone wrong.
+        if executor.stop_signal is not None:
+            raise executor.stop_signal
+
         # The broker actor's consumer is this thread (decision 12).
         broker_actor.drain()
         return broker_actor.handled > 0

@@ -29,6 +29,7 @@ appendix C, and report 20260826-01 finding B1.
 import logging
 import traceback
 
+from vmtrader.errors import StopRequested
 from vmtrader.messaging import Mailbox, TargetWeights
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,12 @@ class BrokerActor:
             handled += 1
             try:
                 self._dispatch(message)
+            except StopRequested:
+                # Not absorbed: this is the operator saying stop, and a
+                # stop the loop is obliged to eat is not a stop
+                # (report 20260826-02, S3). It ends the drain and
+                # reaches the session.
+                raise
             except Exception as error:  # noqa: BLE001
                 logger.error(
                     'BrokerActor[%s] handler Exception:\n%s',
