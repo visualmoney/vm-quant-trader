@@ -1,3 +1,4 @@
+from vmtrader.messaging.command import TargetWeights
 from vmtrader.execution.execution_handler import (
     ExecutionHandler
 )
@@ -164,10 +165,70 @@ class QuantTradingSystem:
             data_handler=self.data_handler
         )
 
+    def decide_weights(self, dt):
+        """
+        Choose target weights for a rebalance.
+
+        The half of a rebalance that reads no account state. It is
+        separated so that it can run wherever the strategy runs,
+        which is not necessarily where the portfolio lives.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The current time.
+
+        Returns
+        -------
+        `TargetWeights`
+            The decision, as the message that carries it across the
+            boundary. Weights are sorted and held as pairs, so two
+            runs that decide the same thing produce equal messages
+            and neither side can edit the other's dictionary.
+        """
+        weights = self.portfolio_construction_model.decide_weights(dt)
+        return TargetWeights(dt=dt, weights=tuple(sorted(weights.items())))
+
+    def size_and_submit(self, command, stats=None):
+        """
+        Size a decision against the account and send the orders.
+
+        The half that reads and writes the account: holdings for the
+        difference, equity and cash for the sizing, open orders and
+        the ledger for the submission.
+
+        Takes the message rather than loose arguments because that is
+        what will arrive once the two halves are separate actors.
+        Passing it whole now means the boundary does not move again
+        when a queue is put across it.
+
+        Parameters
+        ----------
+        command : `TargetWeights`
+            The decision to act on. Its own timestamp is used, so a
+            command that waited in a queue still sizes the rebalance
+            it was created for.
+        stats : `dict`, optional
+            An optional statistics dictionary to append values to
+            throughout the simulation lifetime.
+
+        Returns
+        -------
+        `None`
+        """
+        rebalance_orders = self.portfolio_construction_model.build_orders(
+            command.dt, command.as_dict(), stats=stats
+        )
+        self.execution_handler(command.dt, rebalance_orders)
+
     def __call__(self, dt, stats=None):
         """
-        Construct the portfolio and (optionally) execute the orders
-        with the broker.
+        Run a whole rebalance: decide, then size and submit.
+
+        The single entry point both planes use today. It stays
+        because nothing about running the two halves back to back is
+        wrong -- under cron and in a backtest there is one thread and
+        this is what a rebalance is.
 
         Parameters
         ----------
@@ -181,8 +242,4 @@ class QuantTradingSystem:
         -------
         `None`
         """
-        # Construct the target portfolio
-        rebalance_orders = self.portfolio_construction_model(dt, stats=stats)
-
-        # Execute the orders
-        self.execution_handler(dt, rebalance_orders)
+        self.size_and_submit(self.decide_weights(dt), stats=stats)
