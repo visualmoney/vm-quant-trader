@@ -3,7 +3,10 @@ from unittest.mock import Mock
 import pandas as pd
 
 from vmtrader.execution.execution_algo.execution_algo import ExecutionAlgorithm
+from vmtrader.alpha_model.fixed_signals import FixedSignalsAlphaModel
+from vmtrader.asset.universe.static import StaticUniverse
 from vmtrader.messaging import TargetWeights
+from vmtrader.portcon.pcm import PortfolioConstructionModel
 from vmtrader.execution.execution_algo.market_order import (
     MarketOrderExecutionAlgorithm
 )
@@ -66,16 +69,18 @@ def test_a_supplied_optimiser_and_execution_algo_are_used():
 
 class UnreachableBroker:
     """
-    A broker that refuses to be read at all.
+    A collaborator that refuses to be read at all.
 
     Any attribute access raises, so a test using one proves the code
-    under it never reached the account -- not that it happened not to
-    this time.
+    under it never reached the thing -- not that it happened not to
+    this time. Used for the broker and, in the venue test below, for
+    the data handler: the two are different boundaries but the same
+    kind of proof.
     """
 
     def __getattr__(self, name):
         raise AssertionError(
-            'the decision half reached the broker: %s' % name
+            'the decision half reached something it must not: %s' % name
         )
 
 
@@ -101,6 +106,44 @@ def test_deciding_weights_never_reaches_the_broker():
     command = qts.decide_weights(pd.Timestamp('2026-08-24 09:10'))
 
     assert command.as_dict() == {'EQ:005930': 0.6, 'EQ:000660': 0.4}
+
+
+def test_deciding_weights_never_reaches_the_venue():
+    """
+    Tests the property the two-actor split is sold on.
+
+    Section 3 promises that a strategy taking five seconds does not
+    delay a fill being recorded. The gateway's throttle holds a
+    module-level lock across its sleep, so the moment the deciding half
+    asks the venue for a price it is contending for the same lock order
+    submission needs -- and separate data handler instances would not
+    help, because the lock is not per-instance (report 20260826-01, M3
+    and 20260826-02, S5).
+
+    It holds today: the optimisers and the shipped alpha models keep a
+    data handler for interface parity and never call it, and signals
+    are updated on the other plane. It is not enforced anywhere, which
+    is why an alpha model that reads a price -- entirely legal to
+    write -- would break it silently. This is what says so.
+
+    Unlike the sibling test above, the alpha model here is a real one
+    rather than a lambda: what is being checked is what actually runs,
+    not what the plumbing around it does.
+    """
+    unreachable = UnreachableBroker()
+    pcm = PortfolioConstructionModel(
+        unreachable, 'live', StaticUniverse(['EQ:005930', 'EQ:000660']),
+        unreachable,
+        FixedWeightPortfolioOptimiser(data_handler=unreachable),
+        alpha_model=FixedSignalsAlphaModel(
+            {'EQ:005930': 0.6, 'EQ:000660': 0.4}
+        ),
+        data_handler=unreachable
+    )
+
+    weights = pcm.decide_weights(pd.Timestamp('2026-08-24 09:10'))
+
+    assert weights == {'EQ:005930': 0.6, 'EQ:000660': 0.4}
 
 
 def test_a_decision_is_carried_as_a_sorted_immutable_message():
