@@ -17,6 +17,7 @@ import pandas as pd
 
 from vmtrader import settings
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
+from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.live.guards import KillSwitchEngaged
 from vmtrader.messaging import RebalanceDue
 from vmtrader.broker.live.reconcile import reconcile
@@ -74,15 +75,21 @@ class LiveTradingSession(TradingSession):
         )
         self.clock = clock if clock is not None else pd.Timestamp.now
 
-    def _executor(self):
+    def _actors(self):
         """
-        Build the strategy actor for this launch.
+        Build both actors for this launch and connect them.
 
         Synchronous, so no thread is started and the rebalance runs
         exactly where it always did. What the indirection buys is that
-        the path from "trading is due" to an order is now the same one
-        a resident process will take -- when the flag flips there is no
+        the path from "trading is due" to an order is the same one a
+        resident process will take -- when the flag flips there is no
         second code path to discover.
+
+        The connection is the point. The executor's outbox is the
+        broker actor's mailbox and nothing else: hand it
+        'qts.size_and_submit' instead and the strategy is holding the
+        portfolio's write path, which is what report 20260826-01 found
+        as B1 and what decision 5 was withdrawn for.
 
         Built per cycle rather than held on the session, because a
         stopped executor is replaced rather than restarted. Under cron
@@ -90,16 +97,22 @@ class LiveTradingSession(TradingSession):
 
         Returns
         -------
-        `BaseStrategyExecutor`
-            The executor, in synchronous mode.
+        `tuple[BaseStrategyExecutor, BrokerActor]`
+            The strategy actor and the broker actor, both synchronous.
         """
-        return BaseStrategyExecutor(
-            strategy=self.qts.portfolio_construction_model.alpha_model,
-            decide=self.qts.decide_weights,
-            post_command=self.qts.size_and_submit,
+        broker_actor = BrokerActor(
+            size_and_submit=self.qts.size_and_submit,
             synchronous=True,
             on_error=self._log_error
         )
+        executor = BaseStrategyExecutor(
+            strategy=self.qts.portfolio_construction_model.alpha_model,
+            decide=self.qts.decide_weights,
+            post_command=broker_actor.post_command,
+            synchronous=True,
+            on_error=self._log_error
+        )
+        return executor, broker_actor
 
     def _log_error(self, error):
         """
@@ -227,7 +240,13 @@ class LiveTradingSession(TradingSession):
                 )
                 return outcome
 
-        self._executor().post_event(RebalanceDue(dt=now))
+        executor, broker_actor = self._actors()
+        executor.post_event(RebalanceDue(dt=now))
+        # Synchronous today, so the mailbox is already empty; the
+        # drain is here because it is where the resident shape needs
+        # it, and because a queued command with nobody consuming is
+        # the silent loss the design forbids.
+        broker_actor.drain()
         outcome['traded'] = True
 
         deadline = self._deadline(now)

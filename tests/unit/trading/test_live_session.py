@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from vmtrader import settings
+from vmtrader.broker.actor import BrokerActor
 from vmtrader.messaging import TargetWeights
 from vmtrader.broker.live.client import AccountBalance, OrderReport
 from vmtrader.broker.live.guards import SafetyGuard
@@ -371,3 +372,50 @@ def test_a_session_without_signals_does_not_ask_for_history(tmp_path):
 
     assert outcome['traded'] is True
     assert venue.chart_calls == []
+
+
+def test_the_executor_outbox_is_a_mailbox_not_the_write_path(tmp_path):
+    """
+    Tests the wiring that finding B1 of report 20260826-01 caught.
+
+    The strategy actor's outbox used to be 'qts.size_and_submit', a
+    bound method of the half decision 9 had just split off. Follow it
+    and you reach get_portfolio_as_dict, then open_orders, then the
+    ledger, then transact_asset -- the withdrawn decision 5, line for
+    line, arriving through an injected callable instead of a name.
+
+    An import boundary cannot see that, because nothing was imported.
+    This asserts on the instance instead: what the executor holds must
+    be a broker actor's mailbox door and nothing else.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now)
+
+    executor, broker_actor = session._actors()
+    outbox = executor._post_command
+
+    assert outbox.__func__ is BrokerActor.post_command
+    assert outbox.__self__ is broker_actor
+
+
+def test_the_executor_cannot_reach_accounting_through_its_outbox(tmp_path):
+    """
+    Tests that the outbox stays a door rather than becoming a corridor.
+
+    A later refactor could keep the type and still hand back something
+    that writes: what matters is that everything reachable through the
+    object the executor holds is inert with respect to the portfolio,
+    the ledger and the open orders.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, broker, _, _ = _session(tmp_path, now)
+
+    executor, _ = session._actors()
+    reachable = {
+        name for name in dir(executor._post_command.__self__)
+        if not name.startswith('_')
+    }
+
+    assert reachable == {'post_command', 'drain', 'mailbox', 'name'}
+    for forbidden in ('portfolios', 'open_orders', 'ledger', 'submit_order'):
+        assert not hasattr(executor._post_command.__self__, forbidden)

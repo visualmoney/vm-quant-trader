@@ -1007,18 +1007,32 @@ dict는 여전히 가변**이다. 보낸 쪽이 다음 사이클에 같은 dict�
 이 함정은 `frozen=True`가 잡아주지 못하므로 **테스트로 고정한다** — 보낸 뒤 원본 dict를
 수정해도 수신 값이 그대로인지 단언한다.
 
-### C-4. 결선 — 누가 누구를 아는가
+### C-4. 결선 — 누가 누구를 아는가 (구현됨)
 
 ```
 조립부 (trading/backtest.py · trading/live.py)
    │
-   ├─ executor = BaseStrategyExecutor(strategy, synchronous=..., broker=broker)
-   └─ broker.attach_executor(executor)
+   ├─ broker_actor = BrokerActor(size_and_submit=qts.size_and_submit, synchronous=...)
+   └─ executor     = BaseStrategyExecutor(strategy, decide=qts.decide_weights,
+                                          post_command=broker_actor.post_command, ...)
 ```
 
+**핵심은 실행기가 무엇을 손에 쥐느냐다.** `broker_actor.post_command`는 메일박스로 가는
+문일 뿐이고, 그 객체의 공개 표면은 `post_command`·`drain`·`mailbox` 셋이 전부다 —
+`Portfolio`도 `open_orders`도 원장도 거기서 닿지 않는다. **반대로 `qts.size_and_submit`을
+그대로 넘기면 실행기가 회계의 쓰기 경로를 쥐게 되고, 그것이 철회된 결정 5다**
+(보고서 [20260826-01](reports/20260826-01-two-actor-phase-1-readiness.md) B1 — 실제로
+그렇게 배선돼 있었다). 위반이 이름이 아니라 **주입된 콜러블**을 타고 가므로 AST import
+경계로는 잡히지 않는다. `tests/unit/trading/test_live_session.py`가 **인스턴스 수준으로**
+단언한다 — 실행기의 outbox는 `BrokerActor.post_command`의 바인드 메서드여야 한다.
+
+**Actor 1은 `Thread`가 아니다.** 실행기와의 이 비대칭이 설계다 — 소비자가 메인
+스레드이므로(결정 12) 액터는 메일박스와 `drain()`만 갖고, 루프의 모양은 평면이 정한다.
+
 **양방향 참조가 필요하지만 순환 import는 아니다.** 두 액터 모두 `messaging`(리프)만
-import하고 서로의 모듈은 import하지 않는다 — 참조는 조립부가 런타임에 꽂아 넣는 객체
-참조일 뿐이다. 이것이 §4 결정 7이 어휘를 리프 패키지에 둔 이유의 실제 값어치다.
+import하고 서로의 모듈은 import하지 않는다 — `BrokerActor`는 `size_and_submit`을 콜러블로
+받으므로 `qts`를 import하지 않는다. 이것이 §4 결정 7이 어휘를 리프 패키지에 둔 이유의
+실제 값어치다.
 
 **모드는 여전히 조립부 한 곳에서 정한다**(결정 4). 동기 모드면 양쪽 `post_*`가 호출
 스레드에서 즉시 핸들러를 타고, 스레드 모드면 각자의 메일박스에 적재된다. 호출부는 어느

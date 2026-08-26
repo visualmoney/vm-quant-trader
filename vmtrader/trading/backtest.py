@@ -4,6 +4,7 @@ import pandas as pd
 
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.asset.equity import Equity
+from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.simulated_broker import SimulatedBroker
 from vmtrader.broker.fee_model.zero_fee_model import ZeroFeeModel
 from vmtrader.data.backtest_data_handler import BacktestDataHandler
@@ -412,12 +413,21 @@ class BacktestTradingSession(TradingSession):
         # handled on this one. It is built per run because a stopped
         # executor is replaced rather than restarted, and 'stats' is a
         # per-run collector its outbox has to reach.
+        # The broker actor holds the write path; the strategy actor
+        # holds only a way to reach its mailbox. Handing the executor
+        # 'size_and_submit' directly is finding B1 of report
+        # 20260826-01 -- the withdrawn decision 5, re-entered through
+        # an injected callable.
+        broker_actor = BrokerActor(
+            size_and_submit=lambda command: self.qts.size_and_submit(
+                command, stats=stats
+            ),
+            synchronous=True
+        )
         executor = BaseStrategyExecutor(
             strategy=self.qts.portfolio_construction_model.alpha_model,
             decide=self.qts.decide_weights,
-            post_command=lambda command: self.qts.size_and_submit(
-                command, stats=stats
-            ),
+            post_command=broker_actor.post_command,
             synchronous=True
         )
 

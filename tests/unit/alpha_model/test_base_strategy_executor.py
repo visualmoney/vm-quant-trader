@@ -348,7 +348,15 @@ def test_the_executor_module_cannot_reach_the_accounting():
 
     Structural rather than behavioural on purpose. A test that calls
     the executor and finds the portfolio unchanged proves it about
-    that call; this proves the code has no way to reach it at all.
+    that call; this proves the module cannot name the accounting.
+
+    It proves nothing about what is *handed* to the executor, and an
+    earlier version of this docstring claimed otherwise -- "no way to
+    reach it at all" -- while both assembly points were passing in a
+    bound method that reached all of it (report 20260826-01, B1). An
+    import boundary cannot see an injected callable. The wiring is
+    asserted on the instance instead, in
+    tests/unit/trading/test_live_session.py.
     """
     source = pathlib.Path(
         vmtrader.alpha_model.base_strategy_executor.__file__
