@@ -1,9 +1,12 @@
 import datetime
 
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
 from vmtrader import settings
+from vmtrader.messaging import TargetWeights
 from vmtrader.broker.live.client import AccountBalance, OrderReport
 from vmtrader.broker.live.guards import SafetyGuard
 from vmtrader.broker.live.ledger import OrderLedger
@@ -61,13 +64,26 @@ class StubVenue:
 class RecordingSystem:
     """
     Stands in for QuantTradingSystem, recording when it was called.
+
+    Offers both halves of a rebalance, because the session reaches one
+    through the strategy executor now. Recording on the second half
+    rather than the first is deliberate: it is the half that would
+    place orders, so 'calls' still means "a rebalance actually
+    happened" and not merely "weights were considered".
     """
 
     def __init__(self):
         self.calls = []
+        self.portfolio_construction_model = SimpleNamespace(alpha_model=None)
+
+    def decide_weights(self, dt):
+        return TargetWeights(dt=dt, weights=())
+
+    def size_and_submit(self, command, stats=None):
+        self.calls.append(command.dt)
 
     def __call__(self, dt, stats=None):
-        self.calls.append(dt)
+        self.size_and_submit(self.decide_weights(dt), stats=stats)
 
 
 def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):

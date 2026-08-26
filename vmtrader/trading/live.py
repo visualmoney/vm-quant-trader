@@ -16,7 +16,9 @@ daily rather than only after a crash.
 import pandas as pd
 
 from vmtrader import settings
+from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.broker.live.guards import KillSwitchEngaged
+from vmtrader.messaging import RebalanceDue
 from vmtrader.broker.live.reconcile import reconcile
 from vmtrader.signals.warmup import warm_up_signals
 from vmtrader.trading.trading_session import TradingSession
@@ -71,6 +73,44 @@ class LiveTradingSession(TradingSession):
             else pd.Timedelta(minutes=10)
         )
         self.clock = clock if clock is not None else pd.Timestamp.now
+
+    def _executor(self):
+        """
+        Build the strategy actor for this launch.
+
+        Synchronous, so no thread is started and the rebalance runs
+        exactly where it always did. What the indirection buys is that
+        the path from "trading is due" to an order is now the same one
+        a resident process will take -- when the flag flips there is no
+        second code path to discover.
+
+        Built per cycle rather than held on the session, because a
+        stopped executor is replaced rather than restarted. Under cron
+        that costs nothing: each launch is one cycle.
+
+        Returns
+        -------
+        `BaseStrategyExecutor`
+            The executor, in synchronous mode.
+        """
+        return BaseStrategyExecutor(
+            strategy=self.qts.portfolio_construction_model.alpha_model,
+            decide=self.qts.decide_weights,
+            post_command=self.qts.size_and_submit,
+            synchronous=True,
+            on_error=self._log_error
+        )
+
+    def _log_error(self, error):
+        """
+        Report an exception raised inside a strategy handler.
+
+        Parameters
+        ----------
+        error : `Exception`
+            The exception raised.
+        """
+        self._log('Strategy handling failed: %s' % error)
 
     def _deadline(self, now):
         """
@@ -187,7 +227,7 @@ class LiveTradingSession(TradingSession):
                 )
                 return outcome
 
-        self.qts(now)
+        self._executor().post_event(RebalanceDue(dt=now))
         outcome['traded'] = True
 
         deadline = self._deadline(now)
