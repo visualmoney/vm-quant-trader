@@ -7,7 +7,7 @@ import pytest
 
 from vmtrader import settings
 from vmtrader.broker.actor import BrokerActor
-from vmtrader.messaging import TargetWeights
+from vmtrader.messaging import MailboxClosed, TargetWeights
 from vmtrader.broker.live.client import AccountBalance, OrderReport
 from vmtrader.broker.live.guards import SafetyGuard
 from vmtrader.broker.live.ledger import OrderLedger
@@ -420,7 +420,7 @@ def test_the_executor_cannot_reach_accounting_through_its_outbox(tmp_path):
 
     assert reachable == {
         'post_command', 'drain', 'mailbox', 'name', 'synchronous',
-        'handled'
+        'attempted', 'completed', 'refuse_commands'
     }
     for forbidden in ('portfolios', 'open_orders', 'ledger', 'submit_order'):
         assert not hasattr(executor._post_command.__self__, forbidden)
@@ -521,3 +521,67 @@ def test_a_failing_cycle_does_not_leak_the_strategy_thread(tmp_path):
     assert len(seen) == 1
     assert seen[0].is_alive() is False
     assert seen[0].mailbox.is_closed is True
+
+
+def test_a_rebalance_that_failed_is_not_reported_as_a_trade(tmp_path):
+    """
+    Tests that 'traded' follows the act rather than the attempt.
+
+    The command reaches the broker side and fails there. The drain
+    absorbs it -- an ordinary failure does not end a drain, because
+    everything behind that consumer stops when it does -- so the cycle
+    carries on to settlement, and the outcome must still say the
+    rebalance did not happen.
+
+    Threaded, because that is where the absorption lives: posting
+    synchronously dispatches on the caller's thread with no guard, so
+    the same failure propagates out of the session instead. The two
+    modes differing there is finding M4, still open.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=False)
+
+    def explode(command, stats=None):
+        raise ValueError('the sizer could not price the universe')
+
+    session.qts.size_and_submit = explode
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == []
+    assert outcome['traded'] is False
+    assert 'no decision' in outcome['reason']
+
+
+def test_a_late_decision_is_refused_rather_than_queued(tmp_path):
+    """
+    Tests the window between the barrier and the drain.
+
+    A strategy that overran keeps running, and when it finishes it
+    still holds a live outbox. Before the latch that outbox took the
+    command, put it in a queue the cycle had already finished draining,
+    and the process exited with it still there -- no exception, no
+    counter, a rebalance that simply did not happen.
+
+    Simulated by posting after the cycle rather than by racing a real
+    overrun: the point is what the door does, not how long the
+    strategy took to reach it.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now)
+
+    captured = []
+    original = session._actors
+
+    def actors():
+        executor, broker_actor = original()
+        captured.append(broker_actor)
+        return executor, broker_actor
+
+    session._actors = actors
+    session._decide_and_submit(now)
+
+    with pytest.raises(MailboxClosed, match='barrier'):
+        captured[0].post_command(
+            TargetWeights(dt=now, weights=(('EQ:005930', 1.0),))
+        )

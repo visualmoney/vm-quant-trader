@@ -189,6 +189,12 @@ class LiveTradingSession(TradingSession):
                     'reconciles.' % STRATEGY_BUDGET_SECONDS
                 )
 
+        # The command lane closes here and not a line later. Between
+        # the barrier and the drain is exactly the window an overrunning
+        # strategy finishes in, and a command posted into that gap used
+        # to be accepted, never consumed, and lost at exit (S1).
+        broker_actor.refuse_commands()
+
         # A stop the strategy ran into cannot be raised on its own
         # thread and cannot be swallowed, so it waits here. After the
         # barrier, not inside it: raising from the 'finally' would mask
@@ -198,7 +204,10 @@ class LiveTradingSession(TradingSession):
 
         # The broker actor's consumer is this thread (decision 12).
         broker_actor.drain()
-        return broker_actor.handled > 0
+        # Completed, not attempted: a command that was taken up and
+        # then raised did not trade, and reporting otherwise is what
+        # made a stopped cycle look like an ordinary one.
+        return broker_actor.completed > 0
 
     def _log_error(self, error):
         """

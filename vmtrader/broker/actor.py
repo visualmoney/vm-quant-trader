@@ -30,7 +30,7 @@ import logging
 import traceback
 
 from vmtrader.errors import StopRequested
-from vmtrader.messaging import Mailbox, TargetWeights
+from vmtrader.messaging import Mailbox, MailboxClosed, TargetWeights
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,9 @@ class BrokerActor:
         self._synchronous = synchronous
         self._on_error = on_error
         self._mailbox = Mailbox('broker', maxsize=BROKER_MAILBOX_MAXSIZE)
-        self._handled = 0
+        self._attempted = 0
+        self._completed = 0
+        self._commands_refused = False
 
     # -- the face the strategy actor calls -------------------------------
 
@@ -84,7 +86,21 @@ class BrokerActor:
         ----------
         command : `object`
             A command this actor knows how to carry out.
+
+        Raises
+        ------
+        `MailboxClosed`
+            Once the cycle's command latch has been tripped. A command
+            arriving after the barrier has nobody left to carry it
+            out, and a loss with no consumer coming is the one thing
+            this layer refuses to let happen quietly.
         """
+        if self._commands_refused:
+            raise MailboxClosed(
+                "broker actor is no longer accepting commands: the "
+                "cycle's barrier has passed. Whatever produced this "
+                "was still deciding after the session stopped waiting."
+            )
         if self._synchronous:
             self._dispatch(command)
         else:
@@ -147,8 +163,14 @@ class BrokerActor:
             The command to carry out.
         """
         if isinstance(message, TargetWeights):
-            self._handled += 1
+            # Counted on both sides of the call on purpose: attempted
+            # says a command was taken up, completed says it came back.
+            # A stop raised inside the venue call lands between them,
+            # which is exactly the distinction between "the cycle ran"
+            # and "the cycle was stopped".
+            self._attempted += 1
             self._size_and_submit(message)
+            self._completed += 1
         else:
             # Lifecycle events addressed here -- PollDue, EndOfDay --
             # have no handler yet because nothing produces them. When
@@ -159,28 +181,67 @@ class BrokerActor:
                 "for" % type(message).__name__
             )
 
+    def refuse_commands(self):
+        """
+        Stop accepting commands. One-way, and not the same as closing.
+
+        Tripped at the cycle's barrier, immediately after the strategy
+        actor has been stopped and before the drain. What it closes is
+        the *command* lane: a strategy that overran its budget and
+        finishes afterwards finds a door that is shut and says so,
+        rather than queueing a rebalance nobody will ever carry out
+        (report 20260826-02, S1).
+
+        The mailbox itself stays open, and that asymmetry is the whole
+        reason this is a latch rather than 'close()'. The fill worker
+        is a producer into this same mailbox that is *born after* the
+        strategy actor is already dead, so closing here would refuse
+        the notifications settlement depends on. One mailbox, two
+        lanes, two lifetimes (S9).
+
+        Idempotent: tripping a tripped latch is a no-op.
+        """
+        self._commands_refused = True
+
     # -- instrumentation --------------------------------------------------
 
     @property
-    def handled(self):
+    def attempted(self):
         """
-        Return how many commands this actor has carried out.
+        Return how many commands this actor took up.
 
-        The honest answer to "did a rebalance happen". Posting an
-        event proves only that it was queued -- in threaded mode the
-        deciding had not started yet -- so a session that reports
-        having traded because 'post_event' returned is reporting the
-        intent, not the act (report 20260826-01, B3).
+        Posting an event proves only that it was queued -- in threaded
+        mode the deciding had not started yet -- so a session that
+        reports having traded because 'post_event' returned is
+        reporting the intent (report 20260826-01, B3). This is the
+        next fact along: a command reached the broker side.
 
-        Counted in both modes, and counted before the work rather than
-        after, so a command that raised still shows as attempted.
+        It is still not the same as having traded. See 'completed'.
 
         Returns
         -------
         `int`
-            The lifetime count of commands carried out.
+            The lifetime count of commands taken up.
         """
-        return self._handled
+        return self._attempted
+
+    @property
+    def completed(self):
+        """
+        Return how many commands ran to the end.
+
+        The honest answer to "did a rebalance happen", and the reason
+        it is separate from 'attempted': a command that raised was
+        taken up and did not happen. A single counter read both ways
+        made a cycle the operator stopped indistinguishable from an
+        ordinary day (report 20260826-02, S4).
+
+        Returns
+        -------
+        `int`
+            The lifetime count of commands that returned normally.
+        """
+        return self._completed
 
     @property
     def synchronous(self):
