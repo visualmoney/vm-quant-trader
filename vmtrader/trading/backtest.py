@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 
+from vmtrader.alpha_model.base_strategy import as_strategy
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.asset.equity import Equity
 from vmtrader.broker.actor import BrokerActor
@@ -425,7 +426,9 @@ class BacktestTradingSession(TradingSession):
             synchronous=True
         )
         executor = BaseStrategyExecutor(
-            strategy=self.qts.portfolio_construction_model.alpha_model,
+            strategy=as_strategy(
+                self.qts.portfolio_construction_model.alpha_model
+            ),
             decide=self.qts.decide_weights,
             broker=broker_actor,
             synchronous=True

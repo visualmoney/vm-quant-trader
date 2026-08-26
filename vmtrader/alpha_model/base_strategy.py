@@ -72,3 +72,71 @@ class BaseStrategy(AlphaModel):
         must survive belongs in a durable store as it happens, not
         here.
         """
+
+
+def as_strategy(alpha_model):
+    """
+    Return something the executor can tell what the venue did.
+
+    Decision 1 promises that 'AlphaModel' stays one method and that
+    every existing implementation keeps working. The executor needs
+    somewhere to deliver a fill. Both hold if a plain alpha model is
+    wrapped rather than rejected: authors who want the hooks subclass
+    'BaseStrategy', and authors who do not are unaffected.
+
+    An alpha model that already carries the hooks is returned as it
+    is, so subclassing 'BaseStrategy' costs nothing at this seam and a
+    strategy that supplies them some other way is not second-guessed.
+
+    Parameters
+    ----------
+    alpha_model : `AlphaModel` or `BaseStrategy` or `None`
+        Whatever the assembly holds.
+
+    Returns
+    -------
+    `object`
+        Something with 'on_start', 'on_fill' and 'on_stop'.
+    """
+    hooks = ('on_start', 'on_fill', 'on_stop')
+    if all(callable(getattr(alpha_model, hook, None)) for hook in hooks):
+        return alpha_model
+    return _SilentStrategy(alpha_model)
+
+
+class _SilentStrategy(BaseStrategy):
+    """
+    An alpha model that has not asked to be told anything.
+
+    Every hook is inherited and does nothing, which is the honest
+    behaviour: the author never wrote one. What matters is that the
+    executor has a well-formed thing to call, so a fill arriving is an
+    ignored notification rather than an AttributeError swallowed by
+    the consumer loop.
+
+    Parameters
+    ----------
+    alpha_model : `AlphaModel` or `None`
+        The model to delegate weight generation to.
+    """
+
+    def __init__(self, alpha_model):
+        self._alpha_model = alpha_model
+
+    def __call__(self, dt):
+        """
+        Delegate to the wrapped model.
+
+        Parameters
+        ----------
+        dt : `pd.Timestamp`
+            The time 'now'.
+
+        Returns
+        -------
+        `dict{str: float}`
+            The model's weights, or nothing if there is no model.
+        """
+        if self._alpha_model is None:
+            return {}
+        return self._alpha_model(dt)

@@ -994,3 +994,68 @@ def test_the_time_budget_still_marks_orders_stale(tmp_path):
         ledger_states.STALE
     )
     assert broker.ledger.get_open_orders() == []
+
+
+def test_a_lost_fill_handoff_is_recovered_by_the_next_poll(tmp_path):
+    """
+    Tests the property the consumer-side watermark exists for.
+
+    The venue reports cumulative totals, so a lost notification is
+    recoverable in principle -- but only if the side that books is the
+    side that differences. While the poller advanced the watermark, a
+    dropped handoff meant the next poll computed an increment of zero
+    and the fill was never re-emitted and never booked.
+
+    The loss is simulated by emptying the buffer between the poll and
+    the drain, which is what a capped mailbox will do once these
+    messages travel one.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 4, 10000.0, 6, 0, 40.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    # First poll: the handoff is thrown away before anyone books it.
+    broker._poll_once('0001', broker.ledger)
+    with broker._buffer_lock:
+        broker._fill_buffer = []
+    assert broker.get_portfolio_as_dict(broker.account_id) == {}
+
+    # Second poll: the venue's cumulative figure closes the gap.
+    broker._poll_once('0001', broker.ledger)
+    broker._drain_fill_buffer()
+
+    holding = broker.get_portfolio_as_dict(broker.account_id)['EQ:005930']
+    assert holding['quantity'] == 10
+    assert broker.get_portfolio_cash_balance(broker.account_id) == (
+        1000000.0 - 100000.0 - 100.0
+    )
+
+
+def test_a_duplicated_fill_handoff_books_nothing_twice(tmp_path):
+    """
+    Tests the other direction of the same arithmetic.
+
+    Differencing against what the portfolio has means a message seen
+    twice is simply a no-op, so the handoff no longer has to be exactly
+    once -- only at least once.
+    """
+    client = FakeClient(price=10000.0)
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+    broker._poll_once('0001', broker.ledger)
+    with broker._buffer_lock:
+        broker._fill_buffer = broker._fill_buffer * 3   # delivered thrice
+
+    broker._drain_fill_buffer()
+
+    holding = broker.get_portfolio_as_dict(broker.account_id)['EQ:005930']
+    assert holding['quantity'] == 10

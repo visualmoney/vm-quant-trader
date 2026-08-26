@@ -59,6 +59,45 @@ _WRITES_THE_ACCOUNTING = (
 )
 
 
+def _refuse_a_strategy_that_cannot_be_told(strategy):
+    """
+    Reject a strategy with no way to hear what the venue did.
+
+    Decision 1 says the executor owns a 'BaseStrategy', but both
+    assembly points were handing it a plain 'AlphaModel' -- which has
+    '__call__' and none of the hooks. Harmless while nothing produced
+    an 'OrderFilled', and the moment one flowed it would have been an
+    AttributeError per fill, absorbed by the loop, so every fill
+    notification would vanish quietly (report 20260826-01, M6).
+
+    Checked by surface rather than by type, for the same reason the
+    outbox is: naming 'BaseStrategy' here is fine, but a strategy that
+    supplies the hooks any other way is not wrong, and what matters is
+    that the executor can tell it something.
+
+    Parameters
+    ----------
+    strategy : `object`
+        The candidate strategy.
+
+    Raises
+    ------
+    `TypeError`
+        If it cannot be told about a fill.
+    """
+    missing = sorted(
+        hook for hook in ('on_start', 'on_fill', 'on_stop')
+        if not callable(getattr(strategy, hook, None))
+    )
+    if missing:
+        raise TypeError(
+            'the strategy cannot be told what happened: %r is missing '
+            '%s. Subclass BaseStrategy, whose hooks are all no-ops, '
+            'rather than AlphaModel.'
+            % (type(strategy).__name__, ', '.join(missing))
+        )
+
+
 def _refuse_an_outbox_that_can_write(broker):
     """
     Reject anything that could turn the outbox into a write path.
@@ -147,6 +186,7 @@ class BaseStrategyExecutor(Thread):
         on_error=None
     ):
         super().__init__(name='strategy-executor', daemon=True)
+        _refuse_a_strategy_that_cannot_be_told(strategy)
         _refuse_an_outbox_that_can_write(broker)
         if getattr(broker, 'synchronous', None) is not synchronous:
             raise RuntimeError(

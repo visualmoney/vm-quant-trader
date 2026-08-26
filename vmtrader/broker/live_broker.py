@@ -160,6 +160,10 @@ class LiveBroker(Broker):
         # stays as the name reconciliation and the tests already use.
         self._fill_buffer = []
         self._buffer_lock = threading.Lock()
+        # What the portfolio has, per order. Distinct from the
+        # poller's watermark on purpose -- see _drain_fill_buffer.
+        self._portfolio_booked = {}
+        self._portfolio_charged = {}
         self._worker = None
 
         self.create_portfolio(account_id, account_id)
@@ -590,22 +594,23 @@ class LiveBroker(Broker):
                 'order_id': state['order_id'],
                 'portfolio_id': state['portfolio_id'],
                 'symbol': state['symbol'],
-                'quantity': direction * increment,
+                'direction': direction,
                 'price': report.average_price,
-                'fees': fees,
                 'cumulative_fees': report.fees,
                 'cumulative_filled': report.filled_quantity
             }
-            booked = True
             if ledger is not None:
-                booked = ledger.record_fill(
+                ledger.record_fill(
                     state['order_id'], order_no, report.filled_quantity,
                     direction * increment, report.average_price,
                     fees, self._now()
                 )
-            if booked:
-                with self._buffer_lock:
-                    self._fill_buffer.append(fill)
+            # Handed over whether or not the ledger had seen it. A row
+            # already written says the ledger knows; it says nothing
+            # about the portfolio, and conflating the two is how a
+            # re-emission would be suppressed exactly when it is needed.
+            with self._buffer_lock:
+                self._fill_buffer.append(fill)
             state['booked_quantity'] = report.filled_quantity
             state['booked_fees'] = report.fees
 
@@ -628,19 +633,45 @@ class LiveBroker(Broker):
             pending = self._fill_buffer
             self._fill_buffer = []
 
+        booked = 0
         for fill in pending:
+            # Difference against what the *portfolio* has, not against
+            # what the poller last saw. The two are different facts and
+            # keeping them apart is what makes a lost handoff
+            # recoverable: the venue reports cumulatively, so the next
+            # message carries a total this side has not caught up to,
+            # and the arithmetic here closes the gap on its own.
+            #
+            # Advance it here, on the thread that books, and never on
+            # the producing side. A watermark moved by the producer
+            # says "we have seen this" when what mattered was "the
+            # portfolio has this" -- and once these messages travel a
+            # mailbox that may drop, the difference is a fill that is
+            # never re-emitted and never booked (report 20260826-01, M1).
+            order_no = fill['order_no']
+            already = self._portfolio_booked.get(order_no, 0)
+            increment = fill['cumulative_filled'] - already
+            if increment <= 0:
+                continue
+
+            charged = self._portfolio_charged.get(order_no, 0.0)
+            fees = fill['cumulative_fees'] - charged
+
             dt = self._now()
             self.current_dt = dt
             txn = Transaction(
                 fill['symbol'],
-                fill['quantity'],
+                fill['direction'] * increment,
                 dt,
                 fill['price'],
                 fill['order_id'],
-                commission=fill['fees']
+                commission=fees
             )
             self.portfolios[fill['portfolio_id']].transact_asset(txn)
-        return len(pending)
+            self._portfolio_booked[order_no] = fill['cumulative_filled']
+            self._portfolio_charged[order_no] = fill['cumulative_fees']
+            booked += 1
+        return booked
 
     def settle(self, deadline, poll_interval=0.0, sleep=None,
                shutdown_timeout=30.0):

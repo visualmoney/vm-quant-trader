@@ -15,7 +15,7 @@ import pandas as pd
 import pytest
 
 import vmtrader.alpha_model.base_strategy_executor
-from vmtrader.alpha_model.base_strategy import BaseStrategy
+from vmtrader.alpha_model.base_strategy import BaseStrategy, as_strategy
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.live.guards import KillSwitchEngaged
@@ -671,3 +671,62 @@ def test_an_ordinary_failure_is_still_absorbed():
     assert executor.stop(timeout=2.0)
 
     assert [type(error) for error in errors] == [ValueError]
+
+
+# -- the hook contract ------------------------------------------------
+
+class JustAnAlphaModel:
+    """A plain AlphaModel: one method, no hooks."""
+
+    def __call__(self, dt):
+        return {}
+
+
+def test_a_strategy_that_cannot_be_told_is_refused():
+    """
+    Tests the contract decision 1 states and nothing enforced.
+
+    Both assembly points were handing in a plain AlphaModel. Harmless
+    while nothing produced a fill; the moment one flowed it would have
+    been an AttributeError per fill, absorbed by the loop, so every
+    notification vanished quietly. Refusing at construction turns a
+    silent loss into an assembly error.
+    """
+    broker = BrokerActor(size_and_submit=lambda c: None, synchronous=True)
+
+    with pytest.raises(TypeError, match='on_fill'):
+        BaseStrategyExecutor(
+            strategy=JustAnAlphaModel(),
+            decide=lambda dt: TargetWeights(dt=dt, weights=()),
+            broker=broker,
+            synchronous=True
+        )
+
+
+def test_a_plain_alpha_model_is_adapted_rather_than_rejected():
+    """
+    Tests that decision 1's promise survives the contract.
+
+    'AlphaModel' stays one method and every existing implementation
+    keeps working: the assembly wraps one that has no hooks, so an
+    author who never asked to hear about fills is unaffected and one
+    who did subclasses BaseStrategy.
+    """
+    model = JustAnAlphaModel()
+    adapted = as_strategy(model)
+
+    assert adapted is not model
+    assert adapted(pd.Timestamp('2026-08-24')) == {}
+    adapted.on_fill(_a_fill())      # a no-op, not an AttributeError
+
+
+def test_a_strategy_with_hooks_is_left_alone():
+    """
+    Tests that the adapter does not wrap what does not need wrapping.
+
+    Otherwise subclassing 'BaseStrategy' would silently stop the
+    executor from reaching the object the author actually wrote.
+    """
+    strategy = RecordingStrategy()
+
+    assert as_strategy(strategy) is strategy

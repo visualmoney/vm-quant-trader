@@ -16,6 +16,7 @@ daily rather than only after a crash.
 import pandas as pd
 
 from vmtrader import settings
+from vmtrader.alpha_model.base_strategy import as_strategy
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
 from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.live.guards import KillSwitchEngaged
@@ -125,7 +126,9 @@ class LiveTradingSession(TradingSession):
             on_error=self._log_error
         )
         executor = BaseStrategyExecutor(
-            strategy=self.qts.portfolio_construction_model.alpha_model,
+            strategy=as_strategy(
+                self.qts.portfolio_construction_model.alpha_model
+            ),
             decide=self.qts.decide_weights,
             broker=broker_actor,
             synchronous=self.synchronous,
