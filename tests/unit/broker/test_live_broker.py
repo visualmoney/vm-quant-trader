@@ -11,7 +11,7 @@ from vmtrader.broker.live import ledger as ledger_states
 from vmtrader.broker.live.client import AccountBalance, Holding, OrderReport
 from vmtrader.broker.live.guards import KillSwitchEngaged, SafetyGuard
 from vmtrader.broker.live.ledger import OrderLedger
-from vmtrader.broker.live_broker import LiveBroker
+from vmtrader.broker.live_broker import LiveBroker, POLL_ROUND_WARN
 from vmtrader.data.live_data_handler import LiveDataHandler
 from vmtrader.exchange.krx_exchange import KrxExchange
 from vmtrader.execution.order import Order
@@ -863,3 +863,70 @@ def test_each_settle_round_leaves_a_drain_sample(tmp_path, caplog):
     assert 'heartbeat=900.0' in samples[0]
     assert 'overran=False' in samples[0]
     assert re.search(r'elapsed=\d+\.\d{3}', samples[0])
+
+
+def test_an_oversized_settlement_round_says_so_once(tmp_path, caplog):
+    """
+    Tests the tripwire on the number of orders in one round.
+
+    The worker's queue is not capped, and deliberately: its producer
+    posts one round and then blocks on the drain barrier, so the depth
+    cannot exceed the open order count. Capping it would starve the
+    same deterministic tail every round, and those orders would reach
+    the deadline never polled once.
+
+    What is wanted instead is knowing that the cycle has outgrown its
+    shape. Once per settlement, because repeating it per round would
+    bury the rest of the log.
+    """
+    count = POLL_ROUND_WARN + 5
+    plan = {}
+    client = FakeClient()
+    broker = _broker(client, tmp_path)
+
+    for index in range(count):
+        order_no = 'X%04d' % index
+        order_id = 'intent-%d' % index
+        broker.ledger.record_intent(order_id, 'EQ:005930', 1, broker.current_dt)
+        broker.ledger.record_submitted(order_id, order_no, broker.current_dt)
+        broker.open_orders[order_no] = {
+            'order_id': order_id, 'symbol': 'EQ:005930', 'quantity': 1,
+            'portfolio_id': broker.account_id, 'booked_quantity': 0,
+            'booked_fees': 0.0
+        }
+        plan[order_no] = [OrderReport(order_no, 0, 0.0, 1, 0, 0.0, True)]
+    client.fill_plan = plan
+
+    with caplog.at_level(logging.WARNING):
+        broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    oversized = [
+        record for record in caplog.records
+        if 'beyond the' in record.getMessage()
+    ]
+    assert len(oversized) == 1
+    assert str(count) in oversized[0].getMessage()
+    # Nothing was dropped: every order was polled and closed.
+    assert broker.open_orders == {}
+
+
+def test_a_normal_settlement_round_is_quiet(tmp_path, caplog):
+    """
+    Tests that the tripwire does not fire on an ordinary cycle.
+
+    A warning that shows up every day is one an operator learns to
+    scroll past, which is the same as not having it.
+    """
+    client = FakeClient()
+    broker = _broker(client, tmp_path)
+    broker.submit_order(
+        broker.account_id, Order(broker.current_dt, 'EQ:005930', 10)
+    )
+
+    with caplog.at_level(logging.WARNING):
+        broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert [
+        record for record in caplog.records
+        if 'beyond the' in record.getMessage()
+    ] == []

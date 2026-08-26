@@ -25,7 +25,7 @@ PACKAGE_DIR = os.path.join(
 # 'typing' is here for ClassVar, which is what keeps a topic name a
 # property of the event type instead of a constructor argument.
 ALLOWED_TOP_LEVEL = frozenset(
-    ['dataclasses', 'queue', 'threading', 'typing', 'pandas']
+    ['dataclasses', 'logging', 'queue', 'threading', 'typing', 'pandas']
 )
 ALLOWED_INTERNAL_PREFIX = 'vmtrader.messaging'
 

@@ -41,6 +41,20 @@ from vmtrader import settings
 
 logger = logging.getLogger(__name__)
 
+# How many open orders a settlement round was sized for. The fill
+# worker's queue is deliberately not capped at this: its producer is
+# the main thread, which posts one round and then blocks on the drain
+# barrier, so the depth is already bounded by the open order count and
+# there is no flood to defend against. Dropping here would be worse
+# than useless -- the posting order is deterministic, so the same tail
+# would be starved every round and those orders would reach the
+# deadline never having been polled once.
+#
+# What the number is for is knowing. A round this large means the
+# cycle has left the shape it was designed around, which is worth
+# saying out loud rather than silently truncating.
+POLL_ROUND_WARN = 200
+
 
 class LiveBroker(Broker):
     """
@@ -640,6 +654,7 @@ class LiveBroker(Broker):
         """
         sleeper = sleep if sleep is not None else (lambda _: None)
         booked = 0
+        warned_on_round_size = False
         worker = TaskQueueWorker(on_error=self._log_error)
         self._worker = worker
         worker.start()
@@ -654,6 +669,23 @@ class LiveBroker(Broker):
 
                 done = []
                 posted = list(self.open_orders)
+                # Once per settlement, not once per round: the point is
+                # to learn that the cycle is oversized, and repeating it
+                # every round would bury the rest of the log. It goes to
+                # the logger rather than through '_log' because a
+                # tripwire a settings flag can silence is not a
+                # tripwire.
+                if not warned_on_round_size and (
+                    len(posted) > POLL_ROUND_WARN
+                ):
+                    warned_on_round_size = True
+                    logger.warning(
+                        'Settling %d open orders in one round, beyond the '
+                        '%d this cycle is sized for. Nothing is dropped; '
+                        'expect the round to take proportionally longer '
+                        'and the time budget to bind sooner.',
+                        len(posted), POLL_ROUND_WARN
+                    )
                 round_started = time.monotonic()
                 for order_no in posted:
                     worker.post_task({
