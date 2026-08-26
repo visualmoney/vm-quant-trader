@@ -21,15 +21,20 @@ v1 검토에서 반려했던 두 항목은 **사용자 결정으로 해제**되�
 상속(결정 2), 실행기 스레드 `daemon=True`(결정 3). 결정 2·4는 재검토를 거쳐 같은 형태로
 재확정하되, 위험 조합을 막는 **런타임 가드 2개를 필수 조건**으로 두었다(결정 4).
 
-**구현 상태 — Phase 0 완료.** `vmtrader/messaging/`(통지 6종·생명주기 3종·명령 1종과
+**구현 상태 — Phase 0 완료, Phase 1a 선결 항목 전부 해소.** `vmtrader/messaging/`(통지 6종·생명주기 3종·명령 1종과
 `Mailbox`), `BaseStrategy`, `BaseStrategyExecutor`가 모두 구현됐고 두 평면의 합류점이
 `post_event(RebalanceDue(dt))` → `decide_weights` → `TargetWeights` → `size_and_submit`을
 지난다. 양쪽 조립부가 `synchronous=True`이므로 **추가 스레드는 0개**이며, `.dat` 완전 일치
 e2e가 통과하므로 이 재배치는 계산을 바꾸지 않았다.
 
-**Phase 1의 선결 두 항목도 결론이 났다** — Actor 1의 소비자는 새 스레드가 아니라 **메인
-스레드**이고(결정 12), 그 위에서 결정 3을 "daemon은 액터가 아니라 상태 소유로 가른다"로
-다시 썼다. 남은 것은 §7의 재검토 목록과 배선 작업이다.
+**두 차례의 독립 검토가 찾은 소견 30건 중 차단 9건·주요 9건이 모두 조치됐다**
+([20260826-01](reports/20260826-01-two-actor-phase-1-readiness.md) ·
+[20260826-02](reports/20260826-02-stop-and-shutdown-protocol.md)). 그 과정에서 결정 12~14가
+신설되고 결정 3·4·8이 다시 쓰였다.
+
+**스레드를 켤 준비가 됐다.** `LiveTradingSession(synchronous=False)` 인자 하나이며, 두 모드가
+같은 결과를 낸다는 것을 파라미터화된 테스트가 지킨다. 실제 전환은 Phase 1a이고, 남은 것은
+§7의 경미 항목과 Phase 1b다.
 
 ## 0. Overview
 
@@ -63,7 +68,7 @@ Actor 2는 전략이 정한 목표를 명령형으로 내려보낸다(결정 9).
 
 | 클래스 | 위치 | 스레드 이름 | 수명 | daemon |
 |---|---|---|---|---|
-| `TaskQueueWorker` | `broker/live/worker.py:140` | `fill-pump` | 리밸런스 1사이클 | **False** (의도적 — [ADR-0008](adr/0008-task-queue-fill-pump.md)) |
+| `TaskQueueWorker` | `broker/live/worker.py`의 `start()` | `fill-pump` | 리밸런스 1사이클 | **False** (의도적 — [ADR-0008](adr/0008-task-queue-fill-pump.md)) |
 
 소유자는 `LiveBroker`다. 워커의 task는 venue를 조회해 버퍼에 append하고 — **그리고 원장과
 `open_orders` 항목에도 쓴다**(결정 3의 정정 참조; v2는 "append만"이라고 적었다) —
@@ -96,7 +101,7 @@ v2는 하나라고 적었고 **틀렸다**(보고서
 
 **Phase 1에서 이 락은 사라진다**(결정 12). 워커가 버퍼 대신 Actor 1의 메일박스에 결과를
 넣으면 핸드오프 자체가 없어지기 때문이다. 단 **락이 사라지는 것이 아니라 옮겨간다** —
-`Mailbox`도 자체 `_lock`(`mailbox.py:53`)을 갖는다. 브로커 안의 손수 만든 버퍼에서 테스트가
+`Mailbox`도 자체 `_lock`(`mailbox.py`의 `Mailbox._lock`)을 갖는다. 브로커 안의 손수 만든 버퍼에서 테스트가
 붙은 리프 클래스로 가는 것이니 나은 자리이지만, 이 인벤토리는 그때 0개가 되는 것이 아니라
 **소유자가 바뀌는 것**으로 갱신된다.
 
@@ -379,11 +384,11 @@ D13(쓰기 엄격)과, 조용히 버리는 큐를 금지하는 D2-a를 이 지�
 
 | 지점 | 하는 일 | 침범 |
 |---|---|---|
-| `pcm.py:73`, `dollar_weighted.py:80·124` | `get_portfolio_as_dict`, `get_portfolio_total_equity` | Actor 1 상태 **읽기** |
-| `execution_handler.py:85` → `live_broker.py:486·471` | `open_orders` 대입, `ledger.record_intent` | Actor 1 상태 **쓰기** |
-| `execution_handler.py:86` → `live_broker.py:577` | `portfolio.transact_asset(txn)` | **회계 기표** — ADR-0008 단일 작성자 위반 |
+| `pcm.py`의 `_obtain_full_asset_list`, `dollar_weighted.py`의 `_obtain_broker_portfolio_total_equity` | `get_portfolio_as_dict`, `get_portfolio_total_equity` | Actor 1 상태 **읽기** |
+| `execution_handler.py`의 `submit_order` 호출 → `live_broker.py`의 `submit_order` | `open_orders` 대입, `ledger.record_intent` | Actor 1 상태 **쓰기** |
+| 그 다음 줄의 `broker.update(dt)` → `_drain_fill_buffer`의 `transact_asset` | `portfolio.transact_asset(txn)` | **회계 기표** — ADR-0008 단일 작성자 위반 |
 
-여기에 더해 `ledger.py:63`의 `sqlite3.connect(path)`는 `check_same_thread`를 끄지 않았다.
+여기에 더해 `ledger.py`의 `OrderLedger.__init__`의 `sqlite3.connect(path)`는 `check_same_thread`를 끄지 않았다.
 SQLite 연결은 만든 스레드에만 속하므로, Phase 1에서 이 경로가 executor 스레드를 타면
 미묘한 레이스가 아니라 **`ProgrammingError`로 즉사**한다.
 
@@ -426,7 +431,7 @@ Phase 구분 자체는 유효하며 §7에서 다시 정의한다.
   `H0STCNI0`(실시간체결통보)이 "주문·정정·취소·거부 접수 통보 와 체결 통보"를 한 채널로
   보내고, 그것이 `OrderAccepted`·`OrderModified`·`OrderCanceled`·`OrderRejected`·`OrderFilled`에
   대응한다. 여기에 통신 실패의 불확정을 담는 `OrderError`를 더한다 — 거부는 "벤더가 판정했다",
-  오류는 "아무도 모른다"이며, 지금 `live_broker.py:475`가 둘을 `REJECTED`로 뭉개고 있다.
+  오류는 "아무도 모른다"이며, 지금 `live_broker.py`의 `place_market_order` 예외 처리가 둘을 `REJECTED`로 뭉개고 있다.
   생명주기 3종은 `RebalanceDue`·`EndOfDay`·`PollDue`다.
 - **의도적으로 두지 않은 것:** 옵션·선물 이벤트(배정·행사·만기·현금결제)는 이 엔진이 현물만
   거래하므로 제외한다. `PARTIALLY_FILLED`는 `OrderFilled`가 이미 증분 이벤트라 같은 사실의 두
@@ -535,7 +540,7 @@ Actor 2 (느려도 됨, 브로커 상태 무의존)      Actor 1 (빠르고 정�
 **주 경로에는 필요 없다.** 결정 9의 이음매 앞에서 Actor 2가 하는 일은 `alpha_model` →
 `risk_model` → `optimiser`이고 산출물은 **목표 가중치**다. 가중치는 무차원 비율이라 현금도
 평가액도 필요하지 않으며, 실제로 그 셋은 `broker.`를 한 번도 참조하지 않는다. 현금이 처음
-필요해지는 곳은 사이저(`dollar_weighted.py:80`)이고 그것은 이음매 **뒤쪽** = Actor 1이다.
+필요해지는 곳은 사이저(`dollar_weighted.py`의 총평가액 조회)이고 그것은 이음매 **뒤쪽** = Actor 1이다.
 따라서 `RebalanceDue`는 **시각만 싣는다.**
 
 **사용자 전략이 굳이 원할 때만 싣는다.** "낙폭이 X를 넘으면 현금화" 같은 전략은 계좌 값을
@@ -552,7 +557,7 @@ Actor 2 (느려도 됨, 브로커 상태 무의존)      Actor 1 (빠르고 정�
 **이 엔진에서는 채택하지 않는다.** 검토 결과 성립하지 않는다.
 
 - **스트림이 불완전하다.** 현금은 주문 이벤트가 아닌 이유로도 움직인다 —
-  `seed_from_venue()`는 `live_broker.py:242·259`에서 `portfolio.cash = balance.cash`로
+  `seed_from_venue()`는 `live_broker.py`의 `seed_from_venue`에서 `portfolio.cash = balance.cash`로
   **절대값을 대입**하고(델타가 아니다), 벤더의 현금은 `prvs_rcdl_excc_amt`(가주문 정산금액)라
   D+2 결제·배당·권리락으로도 변한다. 그런 사실은 주문 스트림에 원리적으로 실리지 않는다.
 - **드리프트가 조용하다.** 로컬 값이 진실과 벌어져도 아무것도 감지하지 못한다. 원칙 1의
@@ -595,9 +600,9 @@ Actor 1로 간다.
 
 | 이벤트 | 백테스트 | cron 라이브 | 상주 (Phase 1) |
 |---|---|---|---|
-| `PollDue` | 매 `SimulationEvent`의 `broker.update(dt)` (`backtest.py:416`) | `broker.update(now, force=True)` (`live.py:170·239`) | 스케줄러 / `settle` 루프 |
-| `RebalanceDue` | `_is_rebalance_event(dt)`가 참일 때 (`:432·440`) | `qts(now)` 자리 (`live.py:190`) | 스케줄러 |
-| `EndOfDay` | `event_type == "market_close"` (`:445`) | `run_end_of_day()` (`live.py:222`) | 스케줄러 |
+| `PollDue` | 매 `SimulationEvent`의 `broker.update(dt)` (`backtest.py`의 `run()` 루프) | `broker.update(now, force=True)` (`live.py`의 `run_rebalance`·`run_end_of_day`) | 스케줄러 / `settle` 루프 |
+| `RebalanceDue` | `_is_rebalance_event(dt)`가 참일 때 (`:432·440`) | `qts(now)` 자리 (`live.py`의 `qts(now)` 자리) | 스케줄러 |
+| `EndOfDay` | `event_type == "market_close"` (`:445`) | `run_end_of_day()` (`live.py`의 `run_end_of_day`) | 스케줄러 |
 
 새 개념을 들이는 것이 아니라 **이미 있는 세 호출 지점에 이름을 붙이는 것**이다. 백테스트
 루프는 이미 셋을 순서대로 실행하고 있다 — 폴링, 리밸런스, 그리고 장 마감의 평가.
@@ -752,7 +757,7 @@ settle(deadline)                        # 이제야 open_orders 가 차 있다
 일이 아니게 된다. cron 단발([ADR-0009](adr/0009-cron-oneshot-live-session.md))에서 프로세스는
 한 사이클을 하고 나가야 하는데, "사이클이 끝났나"가 액터 경계를 넘는 질문이 되어 §5 금지
 규칙 1(답장을 기다리지 않는다)에 걸린다. 구체적으로는 `settle()`이 돌려주는 기표 건수를
-`live.py:235`가 읽고 있고, 그 동기 반환값이 곧바로 깨진다.
+`live.py`가 읽는 정산 건수가 읽고 있고, 그 동기 반환값이 곧바로 깨진다.
 
 **따라 나오는 것 넷:**
 
@@ -760,13 +765,13 @@ settle(deadline)                        # 이제야 open_orders 가 차 있다
 - **생산자 다수, 소비자 하나** — §6.2의 패턴 그대로다. 스케줄러가 `PollDue`·`EndOfDay`를,
   fill-pump가 조회 결과를, Actor 2가 `TargetWeights`를, 그리고 WS 스레드가 생기면 푸시된
   체결을 같은 메일박스에 넣는다.
-- **`_buffer_lock`이 사라진다** — 메일박스가 곧 핸드오프라 `live_broker.py:147`의 손수 만든
+- **`_buffer_lock`이 사라진다** — 메일박스가 곧 핸드오프라 `live_broker.py`의 `_buffer_lock`의 손수 만든
   버퍼가 필요 없어진다. 다만 **락이 없어지는 게 아니라 옮겨간다**: `Mailbox`도 자체
-  `_lock`(`mailbox.py:53`)으로 닫힘 플래그와 계수기를 put과 원자적으로 묶는다. 브로커 안의
+  `_lock`(`mailbox.py`의 `Mailbox._lock`)으로 닫힘 플래그와 계수기를 put과 원자적으로 묶는다. 브로커 안의
   임시 버퍼에서 테스트가 붙은 리프 클래스로 가는 것이니 나은 자리이지만,
   D2 감시 항목은 **해소가 아니라 갱신**이다.
 - **원장 연결은 그대로.** 메인 스레드가 주 연결을 갖고, `ledger_factory`가 워커에게 별도
-  연결을 준다(`ledger.py:63`이 `check_same_thread`를 끄지 않으므로 이 구분이 필요하다).
+  연결을 준다(`ledger.py`의 `OrderLedger.__init__`이 `check_same_thread`를 끄지 않으므로 이 구분이 필요하다).
 
 **종료 순서와도 일관된다**(부록 C-5): 클럭 → Actor 2 → Actor 1이고, Actor 1을 멈추는 것은
 메인 스레드가 루프를 빠져나오는 것이라 자연히 마지막이다.
@@ -1046,7 +1051,7 @@ Alan Kay의 "객체지향의 본질은 메시지 전달"이 문자 그대로 구
 
 | # | 책임 | 위치 |
 |---|---|---|
-| 1 | 시간 예산 | `live_broker.py:664` |
+| 1 | 시간 예산 | `_drain_fill_buffer` |
 | 2 | 킬스위치 게이트 | `:666` |
 | 3 | 라운드 구성(미결 주문 → task) | `:671-690` |
 | 4 | 드레인 배리어 + 하트비트 | `:701-703` |
