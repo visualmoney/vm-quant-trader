@@ -169,19 +169,25 @@ class LiveTradingSession(TradingSession):
             Whether a decision actually reached the broker side.
         """
         executor, broker_actor = self._actors()
-        if not executor.synchronous:
-            executor.start()
-
-        executor.post_event(RebalanceDue(dt=now))
-
-        # Barrier: after this the executor has sent everything it was
-        # going to send, so what is in the broker's mailbox is all of it.
-        if not executor.stop(timeout=STRATEGY_BUDGET_SECONDS):
-            self._log(
-                'The strategy did not finish within %ss; whatever it was '
-                'about to submit is lost. The next launch reconciles.'
-                % STRATEGY_BUDGET_SECONDS
-            )
+        try:
+            if not executor.synchronous:
+                executor.start()
+            executor.post_event(RebalanceDue(dt=now))
+        finally:
+            # Barrier, and unconditional. Anything raised between
+            # start() and here would otherwise leave a started thread
+            # running into settlement, holding an outbox into a mailbox
+            # nobody is draining. Writing this needed 'stop()' to be
+            # total first: it used to raise out of Thread.join on an
+            # executor that was never started, which in a 'finally'
+            # means replacing the real exception with a complaint about
+            # thread lifecycle (report 20260826-02, S2).
+            if not executor.stop(timeout=STRATEGY_BUDGET_SECONDS):
+                self._log(
+                    'The strategy did not finish within %ss; whatever it '
+                    'was about to submit is lost. The next launch '
+                    'reconciles.' % STRATEGY_BUDGET_SECONDS
+                )
 
         # The broker actor's consumer is this thread (decision 12).
         broker_actor.drain()

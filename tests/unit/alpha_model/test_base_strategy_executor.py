@@ -514,3 +514,80 @@ def test_the_two_actors_must_agree_about_the_mode():
             broker=threaded_broker,
             synchronous=True
         )
+
+
+# -- the stop contract: total, idempotent, never self-joining ---------
+
+def test_stopping_an_executor_that_never_started_is_safe():
+    """
+    Tests the property that makes a 'finally' writable.
+
+    This used to raise out of Thread.join. In a 'finally' -- which is
+    where a session must stop its actors -- that means the original
+    exception is replaced by a complaint about thread lifecycle, so
+    the real failure is never seen. Totality is not tidiness here; it
+    is what lets the cycle be wrapped at all.
+    """
+    executor, _ = _executor(synchronous=False)
+
+    assert executor.stop(timeout=0.1) is True
+    assert executor.mailbox.is_closed is True
+
+
+def test_stopping_twice_is_free_and_may_wait_again():
+    """
+    Tests idempotency, and the limit of it.
+
+    Closing an already-closed mailbox is a no-op, so a repeat costs
+    nothing after success. Deliberately not refused: waiting again
+    with more patience after a short timeout is a legitimate thing to
+    want, and the fill worker's own tests already document that
+    pattern.
+    """
+    executor, _ = _executor(synchronous=False)
+    executor.start()
+
+    assert executor.stop(timeout=2.0) is True
+    assert executor.stop(timeout=2.0) is True
+    assert executor.stop() is True
+
+
+def test_a_synchronous_stop_closes_the_mailbox_too():
+    """
+    Tests that 'stopped' means the same thing in both modes.
+
+    A synchronous executor used to return True without closing
+    anything, so there was no observable record that a cycle had
+    ended -- and any later code wanting to ask would have invented its
+    own predicate. 'mailbox.is_closed' is that predicate now.
+    """
+    executor, _ = _executor(synchronous=True)
+
+    assert executor.stop() is True
+    assert executor.mailbox.is_closed is True
+
+
+def test_an_executor_refuses_to_stop_itself():
+    """
+    Tests that a strategy hook cannot deadlock the session.
+
+    Stopping joins, and a thread joining itself raises out of
+    threading with a message about the wrong thing. A strategy that
+    tries to end its own session gets told what it actually did.
+    """
+    caught = []
+
+    def decide(dt):
+        try:
+            executor.stop(timeout=1.0)
+        except RuntimeError as error:
+            caught.append(error)
+        return TargetWeights(dt=dt, weights=())
+
+    executor, _ = _executor(synchronous=False, decide=decide)
+    executor.start()
+    executor.post_event(RebalanceDue(dt=pd.Timestamp('2026-08-24 09:10')))
+    assert executor.stop(timeout=2.0)
+
+    assert len(caught) == 1
+    assert 'cannot stop itself' in str(caught[0])

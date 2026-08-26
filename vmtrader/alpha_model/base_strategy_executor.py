@@ -37,6 +37,7 @@ and 9, and appendix C.
 """
 
 import logging
+import threading
 import traceback
 
 from threading import Thread
@@ -161,6 +162,10 @@ class BaseStrategyExecutor(Thread):
         self._synchronous = synchronous
         self._on_error = on_error
         self._mailbox = Mailbox('strategy-executor')
+        # Tracked here rather than read off Thread's internals: the
+        # names it keeps for this are undocumented and move between
+        # releases, which is the same hazard that renamed _dispatch.
+        self._start_called = False
 
     # -- the face the producers call ------------------------------------
 
@@ -220,6 +225,7 @@ class BaseStrategyExecutor(Thread):
                 "leave it waiting on a mailbox nothing posts to."
                 % self.name
             )
+        self._start_called = True
         super().start()
 
     # -- the consumer loop ----------------------------------------------
@@ -308,6 +314,27 @@ class BaseStrategyExecutor(Thread):
         underneath it, not this: it only decides what happens when a
         strategy has stopped responding altogether.
 
+        Three properties, and they are what let a session call this
+        from a 'finally' (report 20260826-02, S2 and S13).
+
+        **Total.** Safe on an executor that was never started. It used
+        to raise out of 'Thread.join' there, which is worse than a bug
+        of its own: a session that failed before starting and stopped
+        in a 'finally' had its original exception replaced by a
+        complaint about thread lifecycle.
+
+        **Idempotent.** Closing an already-closed mailbox is a no-op,
+        so calling it again is free after success and is a second
+        chance to wait after a timeout -- which is a legitimate thing
+        to want, and is why this stops short of refusing the repeat.
+
+        **Never joins the calling thread.** A strategy hook that tries
+        to end its own session is refused rather than deadlocking on
+        itself.
+
+        The mailbox is closed in both modes, so 'mailbox.is_closed' is
+        a mode-independent answer to "this executor is finished".
+
         Parameters
         ----------
         timeout : `float`, optional
@@ -319,10 +346,23 @@ class BaseStrategyExecutor(Thread):
         `Boolean`
             Whether the executor finished. A synchronous one always
             has.
+
+        Raises
+        ------
+        `RuntimeError`
+            If called from the executor's own thread.
         """
+        if threading.current_thread() is self:
+            raise RuntimeError(
+                "executor '%s' cannot stop itself: the thread being "
+                "waited on is the one doing the waiting" % self.name
+            )
+
+        self._mailbox.close()
         if self._synchronous:
             return True
-        self._mailbox.close()
+        if not self._start_called:
+            return True
         self.join(timeout)
         if self.is_alive():
             logger.error(

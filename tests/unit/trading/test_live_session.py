@@ -479,3 +479,45 @@ def test_a_strategy_that_decides_nothing_is_not_reported_as_a_trade(tmp_path):
     assert qts.calls == []
     assert outcome['traded'] is False
     assert 'no decision' in outcome['reason']
+
+
+def test_a_failing_cycle_does_not_leak_the_strategy_thread(tmp_path):
+    """
+    Tests the 'finally' around the cycle.
+
+    Anything raised on the main thread between starting the executor
+    and the barrier used to leave a started thread running on into
+    settlement, still holding an outbox into a mailbox nobody would
+    drain. The stop is unconditional now, and it is safe to call on
+    every path -- which is the property S13 had to establish before S2
+    could be written.
+
+    The failure is injected at 'post_event' rather than inside the
+    strategy on purpose: a strategy raising is handled by the consumer
+    loop and never reaches this thread, so it would not exercise the
+    window at all.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, _, _ = _session(tmp_path, now, synchronous=False)
+
+    seen = []
+    original = session._actors
+
+    def actors():
+        executor, broker_actor = original()
+        seen.append(executor)
+
+        def explode(event):
+            raise RuntimeError('the clock produced a malformed event')
+
+        executor.post_event = explode
+        return executor, broker_actor
+
+    session._actors = actors
+
+    with pytest.raises(RuntimeError, match='malformed'):
+        session._decide_and_submit(now)
+
+    assert len(seen) == 1
+    assert seen[0].is_alive() is False
+    assert seen[0].mailbox.is_closed is True
