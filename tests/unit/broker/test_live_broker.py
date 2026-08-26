@@ -930,3 +930,67 @@ def test_a_normal_settlement_round_is_quiet(tmp_path, caplog):
         record for record in caplog.records
         if 'beyond the' in record.getMessage()
     ] == []
+
+
+def test_the_kill_switch_leaves_working_orders_open(tmp_path):
+    """
+    Tests that being told to stop does not close what is still working.
+
+    STALE is terminal, and 'get_open_orders' skips terminal rows, so
+    marking an order stale removes the only hook by which the next
+    launch's reconciliation could ask the venue about it again. When
+    the budget expires that is honest -- we gave up. When an operator
+    throws the switch it is not: the order is still at the venue, and
+    the operations manual promises the next launch will tidy it.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    switch = tmp_path / 'STOP'
+    broker = _broker(
+        client, tmp_path, guard=SafetyGuard(kill_switch_path=str(switch))
+    )
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    switch.touch()
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.ledger.get_order(order.order_id)['state'] == (
+        ledger_states.SUBMITTED
+    )
+    # The recovery hook survives: the next launch still sees it.
+    assert [
+        row['order_id'] for row in broker.ledger.get_open_orders()
+    ] == [order.order_id]
+
+
+def test_the_time_budget_still_marks_orders_stale(tmp_path):
+    """
+    Tests the other exit, which is unchanged.
+
+    Giving up at the deadline is a decision the engine made, and STALE
+    records it. Only the operator's stop is exempt.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+            OrderReport('0001', 0, 0.0, 10, 0, 0.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+
+    broker.clock = _poll_driven_clock(client, expire_after=2)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.ledger.get_order(order.order_id)['state'] == (
+        ledger_states.STALE
+    )
+    assert broker.ledger.get_open_orders() == []

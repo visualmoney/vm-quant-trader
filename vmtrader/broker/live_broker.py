@@ -622,6 +622,15 @@ class LiveBroker(Broker):
         late fill is absorbed by the next 'update', and the unfilled
         remainder is picked up by the next rebalance.
 
+        The kill switch ends settlement too, and it does not mark
+        anything stale. Being told to stop is not the same fact as
+        having given up: the orders are still working at the venue, and
+        STALE is terminal, so marking them would remove them from
+        'get_open_orders' and leave the next launch with no way to ask
+        about them. Distinguishing the two exits is what makes the
+        operations manual's promise -- left open, tidied by the next
+        launch -- actually true.
+
         Polling runs on a worker thread so that the main thread stays
         free to watch the kill switch and the deadline.
 
@@ -655,6 +664,7 @@ class LiveBroker(Broker):
         sleeper = sleep if sleep is not None else (lambda _: None)
         booked = 0
         warned_on_round_size = False
+        stopped_by_operator = False
         worker = TaskQueueWorker(on_error=self._log_error)
         self._worker = worker
         worker.start()
@@ -665,6 +675,7 @@ class LiveBroker(Broker):
                     break
                 if self.guard.is_kill_switch_engaged():
                     self._log('Kill switch engaged; stopping settlement.')
+                    stopped_by_operator = True
                     break
 
                 done = []
@@ -732,6 +743,28 @@ class LiveBroker(Broker):
                 )
             self._worker = None
             booked += self._drain_fill_buffer()
+
+        # Why the loop ended decides how the remainder is closed, and
+        # the two reasons are not interchangeable.
+        #
+        # The budget expiring means we stopped caring: STALE is honest,
+        # and a late fill is absorbed by the next 'update' or the next
+        # rebalance.
+        #
+        # The kill switch means somebody told us to stop. The orders
+        # are still working at the venue, and STALE is terminal --
+        # 'get_open_orders' skips terminal rows, so marking them would
+        # be throwing away the only hook by which the next launch's
+        # reconciliation could ever ask about them again. They stay
+        # SUBMITTED, which is what they are.
+        if stopped_by_operator:
+            if self.open_orders:
+                self._log(
+                    '%d order(s) left working at the venue; they stay '
+                    'SUBMITTED so the next launch settles them.'
+                    % len(self.open_orders)
+                )
+            return booked
 
         for order_no in list(self.open_orders):
             self._close_order(
