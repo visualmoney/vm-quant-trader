@@ -24,6 +24,13 @@ from vmtrader.broker.live.reconcile import reconcile
 from vmtrader.signals.warmup import warm_up_signals
 from vmtrader.trading.trading_session import TradingSession
 
+# How long a cycle waits for the strategy to finish deciding. It is a
+# budget rather than a guarantee: the executor is a daemon, so a
+# strategy wedged on an external call cannot hold the cron slot past
+# this, and what it was about to submit is settled by the next
+# launch's reconciliation instead (ADR-0009).
+STRATEGY_BUDGET_SECONDS = 60.0
+
 
 class LiveTradingSession(TradingSession):
     """
@@ -49,6 +56,13 @@ class LiveTradingSession(TradingSession):
         the budget. Defaults to ten minutes.
     clock : `callable`, optional
         Returns the current timestamp. Injected for testing.
+    synchronous : `Boolean`, optional
+        Whether both actors handle their messages on the calling
+        thread. True by default, which is Phase 0: no thread starts
+        and a rebalance runs exactly where it always did. Setting it
+        False gives the strategy a thread of its own; the cycle shape
+        in '_decide_and_submit' is the same either way, which is the
+        point of deciding the mode in one place.
     """
 
     def __init__(
@@ -59,7 +73,8 @@ class LiveTradingSession(TradingSession):
         rebalance_dates=None,
         time_budget=None,
         close_buffer=None,
-        clock=None
+        clock=None,
+        synchronous=True
     ):
         self.broker = broker
         self.qts = qts
@@ -74,6 +89,10 @@ class LiveTradingSession(TradingSession):
             else pd.Timedelta(minutes=10)
         )
         self.clock = clock if clock is not None else pd.Timestamp.now
+        # Decision 4: the mode is decided here, by the assembly, and
+        # nowhere else. Phase 1 flips this one argument; every guard
+        # and both actors follow from it.
+        self.synchronous = synchronous
 
     def _actors(self):
         """
@@ -102,17 +121,71 @@ class LiveTradingSession(TradingSession):
         """
         broker_actor = BrokerActor(
             size_and_submit=self.qts.size_and_submit,
-            synchronous=True,
+            synchronous=self.synchronous,
             on_error=self._log_error
         )
         executor = BaseStrategyExecutor(
             strategy=self.qts.portfolio_construction_model.alpha_model,
             decide=self.qts.decide_weights,
             broker=broker_actor,
-            synchronous=True,
+            synchronous=self.synchronous,
             on_error=self._log_error
         )
         return executor, broker_actor
+
+    def _decide_and_submit(self, now):
+        """
+        Run one rebalance to completion, whichever mode is in force.
+
+        A cron cycle has an end, and this is what reaching it means:
+        the strategy has finished deciding, and everything it decided
+        has been carried out. Both have to be true before settlement
+        starts, because settlement waits on open orders and there are
+        none until the second one is.
+
+        Getting this wrong was finding B3 of report 20260826-01. With
+        a thread, 'post_event' returns having queued the event and
+        nothing more; 'settle' then opens on an empty order book,
+        returns zero, and the process exits and cuts the executor
+        mid-decision. The rebalance does not happen, and the outcome
+        says it did.
+
+        The barrier is a join, not a question. Decision 12 refused the
+        broker a thread because "has the cycle finished" would have to
+        cross an actor boundary, and prohibition 1 forbids waiting on
+        an answer -- but stopping an actor and waiting for it to
+        finish is not asking it anything. That is also why decision
+        2's single-use rule costs nothing here: the executor is built
+        per cycle and a cycle ends it.
+
+        Parameters
+        ----------
+        now : `pd.Timestamp`
+            The time the rebalance is for.
+
+        Returns
+        -------
+        `Boolean`
+            Whether a decision actually reached the broker side.
+        """
+        executor, broker_actor = self._actors()
+        if not executor.synchronous:
+            executor.start()
+
+        executor.post_event(RebalanceDue(dt=now))
+
+        # Barrier: after this the executor has sent everything it was
+        # going to send, so what is in the broker's mailbox is all of it.
+        if not executor.stop(timeout=STRATEGY_BUDGET_SECONDS):
+            self._log(
+                'The strategy did not finish within %ss; whatever it was '
+                'about to submit is lost. The next launch reconciles.'
+                % STRATEGY_BUDGET_SECONDS
+            )
+
+        # The broker actor's consumer is this thread (decision 12).
+        broker_actor.drain()
+        return broker_actor.handled > 0
 
     def _log_error(self, error):
         """
@@ -240,14 +313,14 @@ class LiveTradingSession(TradingSession):
                 )
                 return outcome
 
-        executor, broker_actor = self._actors()
-        executor.post_event(RebalanceDue(dt=now))
-        # Synchronous today, so the mailbox is already empty; the
-        # drain is here because it is where the resident shape needs
-        # it, and because a queued command with nobody consuming is
-        # the silent loss the design forbids.
-        broker_actor.drain()
-        outcome['traded'] = True
+        traded = self._decide_and_submit(now)
+        outcome['traded'] = traded
+        if not traded:
+            outcome['reason'] = 'the strategy produced no decision'
+            self._log(
+                'The rebalance produced no decision; settling anything '
+                'already open and exiting.'
+            )
 
         deadline = self._deadline(now)
         self._log('Settling fills until %s.' % deadline)

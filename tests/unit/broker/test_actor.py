@@ -169,4 +169,6 @@ def test_post_command_is_the_only_way_in():
         if not name.startswith('_')
     }
 
-    assert public == {'post_command', 'drain', 'mailbox', 'synchronous'}
+    assert public == {
+        'post_command', 'drain', 'mailbox', 'synchronous', 'handled'
+    }

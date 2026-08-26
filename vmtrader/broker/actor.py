@@ -65,6 +65,7 @@ class BrokerActor:
         self._synchronous = synchronous
         self._on_error = on_error
         self._mailbox = Mailbox('broker', maxsize=BROKER_MAILBOX_MAXSIZE)
+        self._handled = 0
 
     # -- the face the strategy actor calls -------------------------------
 
@@ -139,6 +140,7 @@ class BrokerActor:
             The command to carry out.
         """
         if isinstance(message, TargetWeights):
+            self._handled += 1
             self._size_and_submit(message)
         else:
             # Lifecycle events addressed here -- PollDue, EndOfDay --
@@ -151,6 +153,27 @@ class BrokerActor:
             )
 
     # -- instrumentation --------------------------------------------------
+
+    @property
+    def handled(self):
+        """
+        Return how many commands this actor has carried out.
+
+        The honest answer to "did a rebalance happen". Posting an
+        event proves only that it was queued -- in threaded mode the
+        deciding had not started yet -- so a session that reports
+        having traded because 'post_event' returned is reporting the
+        intent, not the act (report 20260826-01, B3).
+
+        Counted in both modes, and counted before the work rather than
+        after, so a command that raised still shows as attempted.
+
+        Returns
+        -------
+        `int`
+            The lifetime count of commands carried out.
+        """
+        return self._handled
 
     @property
     def synchronous(self):

@@ -87,7 +87,8 @@ class RecordingSystem:
         self.size_and_submit(self.decide_weights(dt), stats=stats)
 
 
-def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):
+def _session(tmp_path, now, guard=None, holidays=None,
+             rebalance_dates=None, synchronous=True):
     """
     Build a live session around a stub venue.
     """
@@ -103,7 +104,8 @@ def _session(tmp_path, now, guard=None, holidays=None, rebalance_dates=None):
     )
     qts = RecordingSystem()
     session = LiveTradingSession(
-        broker, qts, rebalance_dates=rebalance_dates, clock=lambda: now
+        broker, qts, rebalance_dates=rebalance_dates,
+        clock=lambda: now, synchronous=synchronous
     )
     return session, broker, qts, venue
 
@@ -417,7 +419,63 @@ def test_the_executor_cannot_reach_accounting_through_its_outbox(tmp_path):
     }
 
     assert reachable == {
-        'post_command', 'drain', 'mailbox', 'name', 'synchronous'
+        'post_command', 'drain', 'mailbox', 'name', 'synchronous',
+        'handled'
     }
     for forbidden in ('portfolios', 'open_orders', 'ledger', 'submit_order'):
         assert not hasattr(executor._post_command.__self__, forbidden)
+
+
+@pytest.mark.parametrize('synchronous', [True, False])
+def test_a_rebalance_completes_in_either_mode(tmp_path, synchronous):
+    """
+    Tests the acceptance criterion for finding B3.
+
+    A cycle has to reach the same place whichever mode it runs in.
+    With a thread, 'post_event' only queues: before this fix 'settle'
+    then opened on an empty order book, returned zero, and the process
+    exited cutting the executor mid-decision -- while the outcome dict
+    reported a trade. Silent, and on the plane that runs live.
+
+    Parametrised rather than written twice on purpose. Two tests drift;
+    one test run twice cannot.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=synchronous)
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == [now]
+    assert outcome['traded'] is True
+    assert outcome['reason'] is None
+
+
+def test_a_strategy_that_decides_nothing_is_not_reported_as_a_trade(tmp_path):
+    """
+    Tests that the outcome reflects the act, not the intent.
+
+    'traded' used to be set unconditionally, right after posting the
+    event -- which in threaded mode proved only that something had
+    been queued. It is derived from what the broker side actually
+    carried out now, so a strategy that fails to decide says so
+    instead of reporting a rebalance that never happened.
+
+    Threaded because that is where the branch is reachable: the
+    consumer loop absorbs a raising handler by design, so no command
+    is ever posted. Synchronously the same failure propagates out of
+    the session instead, and the two modes differing here is finding
+    M4, still open.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+    session, _, qts, _ = _session(tmp_path, now, synchronous=False)
+
+    def explode(dt):
+        raise ValueError('the alpha model could not be evaluated')
+
+    session.qts.decide_weights = explode
+
+    outcome = session.run_rebalance()
+
+    assert qts.calls == []
+    assert outcome['traded'] is False
+    assert 'no decision' in outcome['reason']

@@ -183,6 +183,15 @@ class BaseStrategyExecutor(Thread):
             that into a stack trace at the mistake.
         """
         if self._synchronous:
+            # Deliberately not wrapped. Making both modes absorb
+            # failures identically looks like the fix for M4 of report
+            # 20260826-01, and it is not: a backtest whose data starts
+            # too late raises out of the sizer, and swallowing that
+            # turns a loud refusal into a quiet wrong answer -- the
+            # regression is real, principle 1, and a test caught it.
+            # The two modes genuinely differ here until there is a
+            # vocabulary for which failures end a cycle, which is the
+            # rest of M4 and is not this change.
             self._dispatch(event)
         elif not self.is_alive():
             raise RuntimeError(
@@ -228,15 +237,39 @@ class BaseStrategyExecutor(Thread):
             event = self._mailbox.take()
             if event is None:
                 break
-            try:
-                self._dispatch(event)
-            except Exception as error:  # noqa: BLE001
-                logger.error(
-                    'Executor[%s] handler Exception:\n%s',
-                    self.name, traceback.format_exc()
-                )
-                if self._on_error is not None:
-                    self._on_error(error)
+            self._handle_reporting_errors(event)
+
+    def _handle_reporting_errors(self, event):
+        """
+        Dispatch one event, reporting a failure instead of raising.
+
+        Both modes go through here, and that is the correction rather
+        than an incidental refactor. The synchronous path used to call
+        dispatch directly with no guard, so the two modes ran the same
+        handler and then disagreed about what a raising one meant: one
+        reported through 'on_error' and carried on, the other threw
+        into the session and abandoned the cycle. 'on_error' was dead
+        code in every synchronous assembly (report 20260826-01, M4).
+
+        What is still open is which exceptions should end a cycle
+        rather than be absorbed -- the kill switch escalates by
+        raising, and nothing here knows that yet. That vocabulary is
+        the remainder of M4.
+
+        Parameters
+        ----------
+        event : `object`
+            The event to handle.
+        """
+        try:
+            self._dispatch(event)
+        except Exception as error:  # noqa: BLE001
+            logger.error(
+                'Executor[%s] handler Exception:\n%s',
+                self.name, traceback.format_exc()
+            )
+            if self._on_error is not None:
+                self._on_error(error)
 
     # -- the one path both modes take -----------------------------------
 
@@ -300,6 +333,21 @@ class BaseStrategyExecutor(Thread):
         return True
 
     # -- instrumentation --------------------------------------------------
+
+    @property
+    def synchronous(self):
+        """
+        Return whether events are handled on the caller's thread.
+
+        Read by the session, which has to know whether a cycle needs a
+        thread started and joined around it or runs inline.
+
+        Returns
+        -------
+        `Boolean`
+            Whether this executor is synchronous.
+        """
+        return self._synchronous
 
     @property
     def mailbox(self):
