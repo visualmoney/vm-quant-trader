@@ -153,6 +153,21 @@ class BrokerActor:
     # -- instrumentation --------------------------------------------------
 
     @property
+    def synchronous(self):
+        """
+        Return whether commands are carried out on the caller's thread.
+
+        Read by the strategy actor at construction, so that the two
+        halves cannot be assembled in disagreeing modes.
+
+        Returns
+        -------
+        `Boolean`
+            Whether this actor is synchronous.
+        """
+        return self._synchronous
+
+    @property
     def mailbox(self):
         """
         Return the mailbox, for its depth, counters and drop count.

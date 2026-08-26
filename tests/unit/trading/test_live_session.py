@@ -416,6 +416,8 @@ def test_the_executor_cannot_reach_accounting_through_its_outbox(tmp_path):
         if not name.startswith('_')
     }
 
-    assert reachable == {'post_command', 'drain', 'mailbox', 'name'}
+    assert reachable == {
+        'post_command', 'drain', 'mailbox', 'name', 'synchronous'
+    }
     for forbidden in ('portfolios', 'open_orders', 'ledger', 'submit_order'):
         assert not hasattr(executor._post_command.__self__, forbidden)

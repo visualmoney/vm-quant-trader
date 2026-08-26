@@ -17,6 +17,7 @@ import pytest
 import vmtrader.alpha_model.base_strategy_executor
 from vmtrader.alpha_model.base_strategy import BaseStrategy
 from vmtrader.alpha_model.base_strategy_executor import BaseStrategyExecutor
+from vmtrader.broker.actor import BrokerActor
 from vmtrader.broker.live.worker import TaskQueueWorker
 from vmtrader.messaging import (
     EndOfDay,
@@ -39,22 +40,49 @@ class RecordingStrategy(BaseStrategy):
         self.fills.append(event)
 
 
+class Sent(list):
+    """
+    The commands that reached the broker side.
+
+    A real 'BrokerActor' sits between the executor and this list, so
+    that these tests exercise the seam rather than a stand-in for it.
+    In threaded mode the actor queues, which is why reading this list
+    means draining first -- 'drained()' does both.
+    """
+
+    def __init__(self, broker):
+        super().__init__()
+        self._broker = broker
+
+    def drained(self):
+        """
+        Drain the broker actor, then return self.
+        """
+        self._broker.drain()
+        return self
+
+
 def _executor(synchronous=True, strategy=None, decide=None, on_error=None):
     """
-    Build an executor whose outbox is a list.
+    Build an executor wired to a real broker actor.
 
     Returns
     -------
-    `tuple[BaseStrategyExecutor, list]`
-        The executor and the commands it has sent.
+    `tuple[BaseStrategyExecutor, Sent]`
+        The executor and the commands the broker side received.
     """
-    sent = []
+    holder = {}
+    broker = BrokerActor(
+        size_and_submit=lambda command: holder['sent'].append(command),
+        synchronous=synchronous
+    )
+    holder['sent'] = sent = Sent(broker)
     executor = BaseStrategyExecutor(
         strategy=strategy if strategy is not None else RecordingStrategy(),
         decide=decide if decide is not None else (
             lambda dt: TargetWeights(dt=dt, weights=(('EQ:005930', 1.0),))
         ),
-        post_command=sent.append,
+        broker=broker,
         synchronous=synchronous,
         on_error=on_error
     )
@@ -207,7 +235,7 @@ def test_a_raising_handler_does_not_end_the_loop():
     assert executor.stop(timeout=2.0)
 
     assert len(seen) == 2
-    assert len(sent) == 1
+    assert len(sent.drained()) == 1
     assert [type(error) for error in errors] == [ValueError]
 
 
@@ -279,7 +307,7 @@ def test_both_modes_produce_the_same_result_from_the_same_events():
         threaded.post_event(event)
     assert threaded.stop(timeout=2.0)
 
-    assert sync_sent == threaded_sent
+    assert sync_sent.drained() == threaded_sent.drained()
     assert [fill.order_no for fill in sync_strategy.fills] == (
         [fill.order_no for fill in threaded_strategy.fills]
     )
@@ -330,7 +358,7 @@ def test_a_rebalance_becomes_a_command_for_the_broker():
 
     executor.post_event(RebalanceDue(dt=now))
 
-    assert len(sent) == 1
+    assert len(sent.drained()) == 1
     assert isinstance(sent[0], TargetWeights)
     assert sent[0].dt == now
 
@@ -405,3 +433,84 @@ def test_thread_does_not_shadow_any_of_the_executor_s_methods():
     assert shadowed == set(), (
         'threading.Thread shadowed %s' % sorted(shadowed)
     )
+
+
+# -- the third fact in the mode ---------------------------------------
+
+class WritesTheAccounting:
+    """
+    A stand-in for the shape finding B1 caught: an outbox that sizes
+    and submits. It is what 'qts' looks like from the executor's side.
+    """
+
+    synchronous = False
+
+    def post_command(self, command):
+        pass
+
+    def size_and_submit(self, command, stats=None):
+        pass
+
+
+def test_an_outbox_that_can_write_is_refused():
+    """
+    Tests the guard the mode was missing.
+
+    Decision 4 gave the mode two facts and guarded both. The effective
+    mode is three: the flag, start(), and where the outbox points --
+    and the third is the one that can lose money. Handing in something
+    that can size and submit puts the accounting on a thread that a
+    shutdown may cut mid-statement.
+
+    Checked by what the object exposes rather than by its type. The
+    property that matters was never the nominal type; it is that what
+    the strategy holds is inert. Checking by type would also mean
+    importing the broker package here, which is what the module's
+    import boundary exists to prevent.
+    """
+    with pytest.raises(TypeError, match='can write'):
+        BaseStrategyExecutor(
+            strategy=RecordingStrategy(),
+            decide=lambda dt: TargetWeights(dt=dt, weights=()),
+            broker=WritesTheAccounting(),
+            synchronous=False
+        )
+
+
+def test_something_that_cannot_receive_a_command_is_refused():
+    """
+    Tests the other half of the same check.
+
+    A free callable used to be accepted here, which is how a bound
+    method of the write path got in. Anything that cannot take a
+    command at all is a wiring mistake worth naming at construction.
+    """
+    with pytest.raises(TypeError, match='post_command'):
+        BaseStrategyExecutor(
+            strategy=RecordingStrategy(),
+            decide=lambda dt: TargetWeights(dt=dt, weights=()),
+            broker=[].append,
+            synchronous=False
+        )
+
+
+def test_the_two_actors_must_agree_about_the_mode():
+    """
+    Tests the fourth cell of the mode table.
+
+    A synchronous executor wired to a threaded broker queues a command
+    that nothing will consume: the rebalance is lost without a sound,
+    which is the anti-pattern the whole layer exists to forbid. The
+    reverse runs a broker handler on the strategy's thread.
+    """
+    threaded_broker = BrokerActor(
+        size_and_submit=lambda command: None, synchronous=False
+    )
+
+    with pytest.raises(RuntimeError, match='disagree about the mode'):
+        BaseStrategyExecutor(
+            strategy=RecordingStrategy(),
+            decide=lambda dt: TargetWeights(dt=dt, weights=()),
+            broker=threaded_broker,
+            synchronous=True
+        )

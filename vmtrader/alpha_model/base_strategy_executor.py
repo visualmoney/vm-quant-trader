@@ -45,6 +45,55 @@ from vmtrader.messaging import Mailbox, OrderFilled, RebalanceDue
 
 logger = logging.getLogger(__name__)
 
+# What an outbox must not be able to reach. Checked by attribute name
+# rather than by type, and deliberately: importing the broker actor to
+# use isinstance would put the accounting package back within this
+# module's reach, which is the thing the import boundary exists to
+# prevent. The property that matters was never the nominal type
+# anyway -- it is that the object the strategy holds is inert.
+_WRITES_THE_ACCOUNTING = (
+    'portfolios', 'open_orders', 'ledger', 'submit_order',
+    'size_and_submit', 'update', 'settle', 'transact_asset'
+)
+
+
+def _refuse_an_outbox_that_can_write(broker):
+    """
+    Reject anything that could turn the outbox into a write path.
+
+    The strategy actor may be cut at shutdown, so what it holds must
+    not be able to book. This is the guard for the third fact in the
+    mode -- the flag and 'start()' had guards, and the one that could
+    lose money did not.
+
+    Parameters
+    ----------
+    broker : `object`
+        The candidate broker actor.
+
+    Raises
+    ------
+    `TypeError`
+        If it cannot deliver a command, or if it exposes a way to
+        write the accounting.
+    """
+    if not callable(getattr(broker, 'post_command', None)):
+        raise TypeError(
+            'the broker actor must expose post_command(command); got '
+            '%r, which cannot receive a decision at all'
+            % type(broker).__name__
+        )
+    reachable = sorted(
+        name for name in _WRITES_THE_ACCOUNTING if hasattr(broker, name)
+    )
+    if reachable:
+        raise TypeError(
+            'refusing an outbox that can write: %r exposes %s. The '
+            'strategy would be holding the accounting, which is the '
+            'withdrawn decision 5.'
+            % (type(broker).__name__, ', '.join(reachable))
+        )
+
 
 class BaseStrategyExecutor(Thread):
     """
@@ -60,33 +109,55 @@ class BaseStrategyExecutor(Thread):
         strategy wants. Everything it does must be a function of time
         and market data -- it runs on this thread, which owns no
         account state.
-    post_command : `callable`
-        Hands a 'TargetWeights' to the broker side. This is the
-        outbox: today a direct call, and where the broker's mailbox
-        goes when there is one. Fire and forget; its result is never
-        waited on.
+    broker : `BrokerActor`
+        The broker actor this one sends decisions to. Its mailbox door
+        becomes the outbox; nothing else here can reach it.
+
+        Taken as the object rather than as a bare callable on purpose.
+        A free callable is what let the portfolio's write path be
+        handed in and called on this thread (report 20260826-01, B1),
+        and no import boundary could see it. What is checked is not the
+        type but the property that mattered: an outbox must not be able
+        to write.
     synchronous : `Boolean`, optional
         Whether to handle events on the caller's thread instead of
         queueing them. Decided once, by whichever session assembles
-        this, and never per call.
+        this, and never per call. Must match the broker actor's mode.
     on_error : `callable`, optional
         Called with the exception when a handler raises. The failure
         is logged either way; the loop abandons that event and takes
         the next.
+
+    Raises
+    ------
+    `TypeError`
+        If the broker actor exposes anything that writes.
+    `RuntimeError`
+        If the two actors disagree about the mode.
     """
 
     def __init__(
         self,
         strategy,
         decide,
-        post_command,
+        broker,
         synchronous=False,
         on_error=None
     ):
         super().__init__(name='strategy-executor', daemon=True)
+        _refuse_an_outbox_that_can_write(broker)
+        if getattr(broker, 'synchronous', None) is not synchronous:
+            raise RuntimeError(
+                'the two actors disagree about the mode: executor '
+                'synchronous=%r, broker synchronous=%r. A queued '
+                'command with nobody consuming, or a handler running '
+                'on the wrong thread, follows from every mismatch.'
+                % (synchronous, getattr(broker, 'synchronous', None))
+            )
         self._strategy = strategy
         self._decide = decide
-        self._post_command = post_command
+        self._broker = broker
+        self._post_command = broker.post_command
         self._synchronous = synchronous
         self._on_error = on_error
         self._mailbox = Mailbox('strategy-executor')

@@ -427,7 +427,7 @@ class BacktestTradingSession(TradingSession):
         executor = BaseStrategyExecutor(
             strategy=self.qts.portfolio_construction_model.alpha_model,
             decide=self.qts.decide_weights,
-            post_command=broker_actor.post_command,
+            broker=broker_actor,
             synchronous=True
         )
 
