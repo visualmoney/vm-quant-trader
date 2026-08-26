@@ -122,6 +122,7 @@
 | `alpha_model/` `risk_model/` | 신호 → 가중치 | 공유 |
 | `signals/` | 롤링 지표 + 워밍업 | 공유 + LV |
 | `asset/` | 자산·유니버스 | 공유 |
+| `messaging/` | 이벤트 어휘 9종(주문 6 + 생명주기 3) + 단일 소비자 `Mailbox` — **리프**, 엔진 내부 무의존. **아직 생산자·소비자 0** | 공유 |
 | `broker/broker.py` | `Broker` ABC — 추상 9개 | 공유 |
 | `broker/portfolio/` | 현금·포지션·손익 회계 | 공유 |
 | `broker/fee_model/` | 비용 모델 5종 (`KoreaStock` 포함) | 공유 |

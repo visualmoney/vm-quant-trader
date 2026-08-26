@@ -2,13 +2,33 @@
 
 VMTrader의 스레드·이벤트 아키텍처 현황과, 전략 실행기 `BaseStrategyExecutor` 설계안.
 
-- Updated: 2026-08-24
-- Status: **설계안 v2 확정 — 미구현.** §1~§2는 현황(as-is)이고 §3 이하는 목표 구조(to-be)다.
-  v1 검토에서 반려했던 두 항목을 **사용자 결정으로 해제**했다 — 실행기의 `Thread` 직접 상속(결정 2),
-  실행기 스레드 `daemon=True`(결정 3). 각 결정에 그것이 안전하게 성립하는 전제 조건을 함께 기록한다.
-  결정 2·4는 이후 **재검토를 거쳐 같은 형태(Thread 상속 + 플래그)로 재확정**하되, 위험 조합을
-  막는 **런타임 가드 2개를 필수 조건**으로 추가했다(결정 4).
-  `vmtrader/alpha_model/base_strategy_executor.py`의 현재 내용은 스텁이며 **재작성 대상**이다(부록 A-1).
+- Updated: 2026-08-26
+- Status: **설계안 v3 — 부분 구현.** §1~§2는 현황(as-is)이고 §3 이하는 목표 구조(to-be)다.
+
+**v3에서 바뀐 것 — 결정의 순서가 뒤집혔다.** v2까지 이 문서는 실행기의 스레드 형태(결정 2·3)를
+먼저 정하고 액터 구조를 그 위에 얹었다. v3은 **§3의 2액터 메일박스 모델을 상위 결정으로 두고,
+스레드 결정을 그 종속 결정으로 내린다**(사용자 결정). 순서가 중요한 이유는 스레드 모델이
+확정돼야 이벤트를 설계할 수 있고, 이벤트가 정해져야 나머지 구조가 거기 맞춰지기 때문이다.
+
+이 재배열이 **결정 5와 §3의 모순을 드러냈고, 결정 5를 철회했다.** `RebalanceDue` 핸들러가
+`qts(dt)`를 통째로 부르면 Actor 2가 Actor 1의 상태(`Portfolio`·`open_orders`·원장)를 읽고
+**쓰게 되어**, §3이 정한 소유권과 결정 6이 함께 무너진다. 대체 결정이 9·10이다.
+
+**번호는 재배열하지 않는다** — `vmtrader/messaging/`의 docstring들이 "decision 7", "decisions 7
+and 8"을 참조한다. 철회된 결정 5는 자리를 비운 채 남기고, 새 결정은 9·10으로 잇는다.
+
+v1 검토에서 반려했던 두 항목은 **사용자 결정으로 해제**되어 유지된다 — 실행기의 `Thread` 직접
+상속(결정 2), 실행기 스레드 `daemon=True`(결정 3). 결정 2·4는 재검토를 거쳐 같은 형태로
+재확정하되, 위험 조합을 막는 **런타임 가드 2개를 필수 조건**으로 두었다(결정 4).
+
+**구현 상태 — Phase 0 완료.** `vmtrader/messaging/`(통지 6종·생명주기 3종·명령 1종과
+`Mailbox`), `BaseStrategy`, `BaseStrategyExecutor`가 모두 구현됐고 두 평면의 합류점이
+`post_event(RebalanceDue(dt))` → `decide_weights` → `TargetWeights` → `size_and_submit`을
+지난다. 양쪽 조립부가 `synchronous=True`이므로 **추가 스레드는 0개**이며, `.dat` 완전 일치
+e2e가 통과하므로 이 재배치는 계산을 바꾸지 않았다.
+
+Phase 1(스레드를 켜는 일)에 남은 것은 §7의 재검토 목록이며, 그중 **Actor 1의 스레드**와
+그에 종속된 **결정 3의 재작성**이 선결이다.
 
 ## 0. Overview
 
@@ -16,8 +36,9 @@ VMTrader의 스레드·이벤트 아키텍처 현황과, 전략 실행기 `BaseS
 (브로커 메일박스 큐 → BaseStrategyExecutor 큐)을 통과하고, 각 큐는 **단일 소비자 스레드**를 가져
 락 없이 상호배제·순서·원자성을 확보한다. **액터 2개를 이은 구조**다 —
 Actor 1(브로커)은 **빠른 주문 처리**, Actor 2(전략 실행기)는 **느린 전략 처리**를 맡아 분리된다.
-백테스트 — 그리고 현행 cron 단발 라이브(§4 결정 5) — 에서는 큐를 우회해 동기 실행으로 전환되어
-**동일한 핸들러 코드**를 결정론적으로 재사용한다.
+메시지는 **양방향**으로 흐른다 — Actor 1은 벤더가 알려준 사실을 과거형으로 올려보내고,
+Actor 2는 전략이 정한 목표를 명령형으로 내려보낸다(결정 9). 백테스트와 현행 cron 단발
+라이브에서는 큐를 우회해 동기 실행으로 전환되어 **동일한 핸들러 코드**를 결정론적으로 재사용한다.
 
 **현재 상태와의 거리:** 이 파이프라인은 아직 없다. 지금의 라이브 평면은 cron 단발이고
 ([ADR-0009](adr/0009-cron-oneshot-live-session.md)), 스레드는 fill pump 워커 하나뿐이며
@@ -34,8 +55,8 @@ Actor 1(브로커)은 **빠른 주문 처리**, Actor 2(전략 실행기)는 **�
 **첫이자 유일한 사례로 유지한다** — 두 번째 Thread 상속이 필요해 보이면 이 문서를 먼저 갱신한다.
 
 스텁 `alpha_model/base_strategy_executor.py`는 `Thread` 상속과 `daemon=True`(결정 2·3)까지만
-담고 있다 — 철자(`BaseStrategyExcutor`)와 큐·`run()` 루프·가드(결정 4)가 남았으며 §5 스케치대로
-재작성한다.
+담고 있다. 철자는 교정됐고(`BaseStrategyExecutor`), 메일박스·`run()` 루프·가드(결정 4)가
+남았으며 §5 스케치대로 재작성한다.
 
 ### 1-2. 스레드를 생성·소유하는 클래스 (composition) — 1개
 
@@ -69,26 +90,50 @@ Actor 1(브로커)은 **빠른 주문 처리**, Actor 2(전략 실행기)는 **�
 
 ---
 
-## 3. 목표 구조 — 이벤트 처리 큐 파이프라인 (to-be)
+## 3. 목표 구조 — 2액터 메일박스 모델 (to-be) — **상위 결정**
 
-주문 이벤트는 **브로커 → 메일박스 큐 → BaseStrategyExecutor 큐 → 전략 콜백** 순으로 2번 큐잉된다.
+**이 절이 이 문서의 최상위 결정이다.** §4의 결정 8개는 전부 여기서 파생되거나 여기에
+종속된다. 어떤 결정이 §3과 충돌하면 무너지는 쪽은 §3이 아니다 — 결정 5가 그렇게 철회됐다.
 
 ```
 ┌── Actor 1: Broker ─────────────────┐
-│ 메일박스: 브로커 이벤트 큐 (유계)     │   빠르고 정확해야 한다
+│ 메일박스: messaging.Mailbox          │   빠르고 정확해야 한다
 │ 스레드:   브로커 소비자 1개           │   daemon=False — 유실 0 종료
-│ 상태:     주문 추적, 현금, 포지션     │
-└───────────────┬────────────────────┘
-                │ executor.post_event()  ← 액터 간 메시지 (fire-and-forget)
-                ▼
-┌── Actor 2: BaseStrategyExecutor ───┐
-│ 메일박스: executor 큐 (무제한+계측)   │   느려도 된다
+│ 상태:     주문 추적, 현금, 포지션     │   ← Portfolio·open_orders·OrderLedger
+└──┬──────────────────────────▲──────┘
+   │                          │
+   │ 과거형 통지               │ 명령형 메시지
+   │ executor.post_event()    │ broker.post_command()
+   │ "체결됐다·거절됐다"        │ "이 목표 가중치로 주문을 내라"
+   │ (OrderFilled 등 6종)      │ (TargetWeights — 결정 9)
+   ▼                          │
+┌────────────────────────────┴───────┐
+│ Actor 2: BaseStrategyExecutor      │
+│ 메일박스: messaging.Mailbox          │   느려도 된다
 │ 스레드:   strategy-executor 1개      │   daemon=True — 종료를 막지 않는다
 │ 상태:     전략(BaseStrategy), 사용자 코드│
 └────────────────────────────────────┘
 ```
 
-**왜 2단으로 나눴나 — 책임 분리 (이 설계의 중심 결정):**
+**상태 소유권 — §3이 정하는 첫 번째 사실:**
+
+| | Actor 1 (Broker) | Actor 2 (Executor) |
+|---|---|---|
+| 소유 상태 | `Portfolio`(현금·포지션), `open_orders`, `OrderLedger` | 전략 인스턴스, 사용자 코드의 지역 상태 |
+| 만질 수 있는 스레드 | 브로커 소비자 1개 | strategy-executor 1개 |
+
+이 표가 결정 6("executor는 `Portfolio`를 만지지 않는다")을 **자동으로 함의한다.** 결정 6은
+독립 결정이 아니라 이 소유권의 파생 명제다. 마찬가지로 "브로커 소비자가 전략을 직접 호출하지
+않는다"도 여기서 따라 나온다 — 반대 방향의 같은 규칙이다.
+
+**액터 규칙에서 곧바로 따라 나오는 제약 (§6.3):**
+
+액터는 다른 액터의 상태를 직접 읽지도 쓰지도 못한다. 알고 싶으면 메시지를 보내고 **답장을
+기다려야** 한다. 그런데 §5 금지 규칙 1은 답장을 기다리면 데드락이라고 금지한다. 두 규칙을
+동시에 지키면 결론은 하나다 — **전략은 브로커에게 아무것도 물어볼 수 없다.** 필요한 것은
+브로커가 **미리 실어 보내야** 한다(결정 10).
+
+**왜 2단으로 나눴나 — 책임 분리:**
 
 - Actor 1은 **빠르고 정확해야** 한다 (브로커 상태 정합성). 느리면 이벤트 유실.
 - Actor 2는 **느려도 된다** (사용자 전략 코드가 뭘 할지 모름 — 외부 API 호출, 무거운 계산).
@@ -110,11 +155,28 @@ Actor 2가 이 문서의 신설 대상이다.
 
 ---
 
-## 4. `BaseStrategyExecutor` 설계 — 결정 8개 (v2)
+## 4. `BaseStrategyExecutor` 설계 — 결정 11개 (v3)
+
+전부 §3에 종속된다. 아래 표가 각 결정이 §3과 맺는 관계다 — 이것이 v3의 재배열이다.
+
+| 결정 | §3과의 관계 | 상태 |
+|---|---|---|
+| 1 — 전략 계보와 실행기의 분리 | Actor 2 내부 구성 | 유효 |
+| 2 — 실행기가 `Thread` 상속 | Actor 2를 스레드로 **표현하는 방법** | 유효 (사용자 결정) |
+| 3 — 실행기 `daemon=True` | 두 액터의 손실 허용도 비대칭에서 파생 | 유효 (사용자 결정) |
+| 4 — 모드는 조립부 한 곳에서 | 액터를 켜고 끄는 방법 | 유효 |
+| ~~5 — cron 단발에선 스레드가 돌 일 없다~~ | **§3의 소유권을 위반** | **철회** |
+| 6 — executor는 `Portfolio`를 안 만진다 | §3 소유권표의 **파생 명제** (독립 결정 아님) | 유효, 격하 |
+| 7 — 이벤트 타입 ≠ 주문 상태값 | 액터 간 메시지의 어휘 | 유효, **구현됨** |
+| 8 — 백프레셔: 무제한 + 계측 | 메일박스 정책 | 유효, **구현됨** |
+| 9 — 리밸런스의 소유권 분할 | 결정 5의 **대체** | 신설 |
+| 10 — Actor 2는 계좌 상태를 갖지 않는다 | §6.3 액터 규칙의 파생 | 신설 |
+| 10-a — Actor 1 상태의 로컬 미러링 금지 | 10의 우회로 봉쇄 (원칙 1) | 신설 |
+| 11 — 생명주기 이벤트의 수신자와 생산자 | §3 소유권표로 수신자를 판정 | 신설 |
 
 v1 검토는 실행기의 `Thread` 상속과 `daemon=True`를 반려했으나, **사용자 결정으로 두 항목을
 해제하고 채택한다**(결정 2·3). 대신 각 결정이 안전하게 성립하는 전제 조건을 명시하고
-테스트로 고정한다(부록 A). 나머지 결정(1, 4~8)은 v1과 같다.
+테스트로 고정한다(부록 A).
 
 ### 결정 1 — 전략 계보와 실행기의 분리: `BaseStrategy(AlphaModel)` + 실행기는 전략을 소유
 
@@ -150,7 +212,15 @@ BaseStrategyExecutor(Thread)      ← 전략이 이것을 상속하지 않는다
 2. **`run()` 소비 루프를 자체 구현한다** — `TaskQueueWorker`의 루프 규약(poison pill, 핸들러
    예외를 삼키고 `on_error` 보고, 루프는 죽지 않음)을 §6.7대로 동일하게 지키되 구현은 별도다.
    두 소비 루프가 미묘하게 달라지는 것이 이 선택의 비용이므로, 루프 규약을 **양쪽 모두
-   테스트로 고정**한다(부록 A-3).
+   테스트로 고정**한다(부록 A-4).
+3. **`Thread`의 인스턴스 이름공간을 공유한다** — 구현하며 실제로 물린 항목이다.
+   `Thread.__init__`이 `self._handle`을 대입하는데(3.13부터 진짜 스레드 핸들), 이 문서의
+   v2 §5 스케치가 핸들러 이름을 정확히 `_handle`로 적어 두었다. 클래스에 정의한 메서드가
+   인스턴스 속성에 가려져 **첫 이벤트에서 `TypeError: '_thread._ThreadHandle' object is
+   not callable`** 로 죽는다. 두 모드 모두에서, 조용하지 않게. 이름을 `_dispatch`로 바꿨다.
+   예약된 이름은 문서화돼 있지 않고 릴리스마다 늘 수 있으므로, 목록을 관리하는 대신
+   **클래스가 정의한 호출가능 이름과 인스턴스가 실제로 든 이름이 겹치지 않는지**를
+   테스트가 단언한다(부록 A-4).
 
 ### 결정 3 — 실행기 스레드는 `daemon=True`, fill-pump는 여전히 `daemon=False` (사용자 결정)
 
@@ -185,7 +255,7 @@ daemon 정책은 전역이 아니라 **액터별로 갈린다.** 근거는 §3�
   (`post_event(..., sync=True)`)는 금지 — 새 이벤트를 추가하는 사람이 플래그를 빠뜨려
   결정론을 깨뜨린다(D3 불변식 2).
 - 동기 모드에서 executor 인스턴스는 존재하되 `start()`되지 않고, `post_event()`가 호출
-  스레드에서 즉시 `_handle()`을 탄다. **두 모드가 같은 `_handle(event)` 코드를 탄다**
+  스레드에서 즉시 `_dispatch()`를 탄다. **두 모드가 같은 `_dispatch(event)` 코드를 탄다**
   (D3 불변식 1) — 현행 D3 불채택(브로커 클래스 교체 방식)이 남긴 잔여 위험을 새 계층에서는
   만들지 않는다.
 
@@ -211,28 +281,45 @@ D13(쓰기 엄격)과, 조용히 버리는 큐를 금지하는 D2-a를 이 지�
 두 가드는 부록 A-3에서 테스트로 고정한다. **가드 없는 안 B는 채택되지 않았다** — 가드는
 구현 편의가 아니라 이 결정의 성립 조건이다.
 
-### 결정 5 — ADR-0009(cron 단발) 아래에서 executor 스레드는 돌 일이 없다
+### ~~결정 5~~ — **철회됨** (v3)
 
-- 상주 스레드가 값을 내는 것은 push 이벤트(실시간 시세 WS, 비동기 체결 통지)가 있을 때다.
-  현행 라이브는 폴링 + 단발이라 이벤트 생산자가 사실상 메인 스레드뿐이고, 전략 호출은
-  사이클당 `qts(now)` 1회다. 지금 스레드를 켜면 **스레드 1개가 이벤트 0건을 기다리는**
-  구조가 된다.
-- 따라서 구현을 2단계로 나눈다(§7): **Phase 0**은 `synchronous=True`로 합류점 호출을
-  executor 경유로 바꾸고(스레드 0개), **Phase 1**(상주 + 실시간 시세)에서
-  `synchronous=False` + `start()`를 켠다.
-- Phase 0에서도 이 계층을 먼저 넣는 이유: **D3 불변식 1을 코드로 미리 고정**해, 상주 전환
-  날에 핸들러 경로가 두 갈래로 갈라질 자리를 없앤다. 리밸런스·EOD 같은 생명주기 훅도
-  이벤트로 정의해 같은 메일박스를 태우면, 훅 진입 시 큐 배수(D14 불변식 3)가 Phase 1에서
-  구조적으로 공짜가 된다.
+> 철회된 내용: "`RebalanceDue` 핸들러가 `qts(dt)`를 부른다. Phase 0은 `synchronous=True`로
+> 합류점 호출을 executor 경유로 바꾼다(스레드 0개)."
 
-### 결정 6 — 회계 단일 작성자 경계: executor는 `Portfolio`를 만지지 않는다
+**철회 사유 — §3의 소유권 위반.** `qts(dt)`의 호출 사슬을 끝까지 따라가면 Actor 1의 상태를
+읽고 **쓴다.** 코드로 확인된 경로는 다음과 같다.
+
+| 지점 | 하는 일 | 침범 |
+|---|---|---|
+| `pcm.py:73`, `dollar_weighted.py:80·124` | `get_portfolio_as_dict`, `get_portfolio_total_equity` | Actor 1 상태 **읽기** |
+| `execution_handler.py:85` → `live_broker.py:486·471` | `open_orders` 대입, `ledger.record_intent` | Actor 1 상태 **쓰기** |
+| `execution_handler.py:86` → `live_broker.py:577` | `portfolio.transact_asset(txn)` | **회계 기표** — ADR-0008 단일 작성자 위반 |
+
+여기에 더해 `ledger.py:63`의 `sqlite3.connect(path)`는 `check_same_thread`를 끄지 않았다.
+SQLite 연결은 만든 스레드에만 속하므로, Phase 1에서 이 경로가 executor 스레드를 타면
+미묘한 레이스가 아니라 **`ProgrammingError`로 즉사**한다.
+
+**Phase 0에서는 왜 드러나지 않았나.** 동기 모드는 전부 한 스레드라 무해하다. 문제는 Phase 0의
+존재 이유가 "**같은 `_dispatch` 코드**를 미리 고정해 상주 전환 날 경로가 갈라지지 않게 한다"는
+것이었다는 점이다 — 핸들러를 공유한다는 바로 그 성질이 위반을 Phase 1로 운반한다. 그래서
+"Phase 0에서만 맞는 결정"으로 남길 수 없고 철회한다.
+
+**대체:** 결정 9(리밸런스의 소유권 분할)와 결정 10(스냅샷은 이벤트에 실린다).
+Phase 구분 자체는 유효하며 §7에서 다시 정의한다.
+
+### 결정 6 — 회계 단일 작성자 경계: executor는 `Portfolio`를 만지지 않는다 (§3 파생)
+
+**v3에서 격하됐다** — 독립 결정이 아니라 §3 소유권표에서 자동으로 따라 나오는 명제다.
+그래도 절 하나를 유지하는 이유는 이것이 결정 3(`daemon=True`)의 안전 전제이기 때문이다.
 
 - ADR-0008의 "워커는 포트폴리오를 만지지 않는다"가 executor에 그대로 확장된다.
   executor가 받는 이벤트는 **과거형 통지**("체결됐다")이고, 전략이 내고 싶은 주문은
-  브로커의 공개 API 호출(= 액터 간 메시지)로 돌아간다. 다른 액터의 상태를 직접 읽거나
-  쓰지 않는다는 액터 규칙(§6.3) 그대로다.
-- 전략이 잔고·포지션을 봐야 할 때는 브로커의 조회 API(스냅샷 반환)를 쓴다.
-- **이 결정은 결정 3(daemon=True)의 안전 전제다.** 여덟 결정 중 가장 깨져서는 안 되는 것.
+  Actor 1에게 보내는 **명령형 메시지**로 돌아간다(결정 9, 부록 C).
+- ~~전략이 잔고·포지션을 봐야 할 때는 브로커의 조회 API(스냅샷 반환)를 쓴다.~~
+  **이 문장은 v3에서 철회한다.** 조회 API 호출은 다른 액터의 상태를 그 액터의 스레드 밖에서
+  읽는 것이라 §6.3 위반이고, 메시지로 물어 답장을 기다리는 것은 §5 금지 규칙 1(데드락)에
+  걸린다. 전략은 브로커에게 **물어볼 수 없다** — 필요한 값은 결정 10에 따라 이벤트에 실려 온다.
+- **이 결정이 깨지면 결정 3도 함께 재검토한다.** 아홉 결정 중 가장 깨져서는 안 되는 것.
 
 ### 결정 7 — 이벤트 타입 ≠ 주문 상태값 (D4)
 
@@ -242,6 +329,27 @@ D13(쓰기 엄격)과, 조용히 버리는 큐를 금지하는 D2-a를 이 지�
   독립적으로 바꿀 수 없다(D4 "흔한 설계 부채").
 - 모든 이벤트에 **상관관계 ID**(`order_no`)와 발신 정보를 싣는다 — 스택 트레이스가 큐에서
   끊기는 약점(§6.7 ④)의 완화이자, 원장의 멱등키와 이어지는 추적 고리다.
+- **위치 (구현됨):** 어휘와 메일박스는 `vmtrader/messaging/`에 둔다 — `order.py`(벤더가 알린
+  사실, 과거형) · `lifecycle.py`(시계가 알린 시점) · `trading_events.py`(기반 클래스와 토픽) ·
+  `mailbox.py`. 생산자(broker)와 소비자(alpha_model) **어느 쪽도 소유하지 않는 리프
+  패키지**이며, 엔진 내부를 import하지 않는다는 경계를
+  `tests/unit/messaging/test_leaf_boundary.py`가 AST로 고정한다.
+- **이벤트 9종 (구현됨):** 주문 6종은 KRX 현물에서 실제로 오는 것만 둔다 — KIS
+  `H0STCNI0`(실시간체결통보)이 "주문·정정·취소·거부 접수 통보 와 체결 통보"를 한 채널로
+  보내고, 그것이 `OrderAccepted`·`OrderModified`·`OrderCanceled`·`OrderRejected`·`OrderFilled`에
+  대응한다. 여기에 통신 실패의 불확정을 담는 `OrderError`를 더한다 — 거부는 "벤더가 판정했다",
+  오류는 "아무도 모른다"이며, 지금 `live_broker.py:475`가 둘을 `REJECTED`로 뭉개고 있다.
+  생명주기 3종은 `RebalanceDue`·`EndOfDay`·`PollDue`다.
+- **의도적으로 두지 않은 것:** 옵션·선물 이벤트(배정·행사·만기·현금결제)는 이 엔진이 현물만
+  거래하므로 제외한다. `PARTIALLY_FILLED`는 `OrderFilled`가 이미 증분 이벤트라 같은 사실의 두
+  번째 이름이 된다. OCO parent 같은 placeholder 주문은 KRX 현물에 주문 유형 자체가 없고
+  (KIS 주문 API는 현금·신용·정정취소·예약 뿐), "스스로 체결되지 않는다"는 **사건이 아니라
+  속성**이라 토픽이 아니라 주문 레코드의 필드에 속한다.
+- **기반 계약 (구현됨):** 모든 메시지는 `TradingEventMessage`를 상속하고
+  `@dataclass(frozen=True, slots=True, kw_only=True)`를 반복한다. `frozen`은 스레드 경계를
+  넘는 불변성, `slots`는 오타가 새 속성이 되는 것 방지, `kw_only`는 기본값 있는 필드가 뒤
+  필드를 오염시키는 규칙의 회피다. 셋 중 하나를 빠뜨려도 다른 테스트는 전부 통과하므로
+  `tests/unit/messaging/test_events.py`가 세 플래그를 직접 단언한다.
 
 ### 결정 8 — 백프레셔: executor 큐는 무제한, 단 깊이를 계측한다
 
@@ -250,12 +358,151 @@ D13(쓰기 엄격)과, 조용히 버리는 큐를 금지하는 D2-a를 이 지�
 - WS 시세 구독이 들어오는 Phase 1에서 이 판단은 실효된다. 그때 정책을 다시 정할 수 있도록
   **큐 깊이·처리 지연 계측을 Phase 0부터** 넣는다 — "조용히 버리는(또는 조용히 부푸는)
   큐는 사고의 온상"(D2-a).
+- **구현됨:** 계측은 `messaging.Mailbox`가 담당한다 — `depth()`·`high_water`·`posted`.
+  두 액터가 같은 클래스를 쓰므로 의미론이 갈라질 수 없고, 닫힌 메일박스에의 게시는
+  조용히 유실되는 대신 `MailboxClosed`로 시끄럽게 실패한다(가드 1과 같은 정신).
+
+### 결정 9 — 리밸런스의 소유권 분할: `qts(dt)`를 이음매에서 쪼갠다 (결정 5의 대체)
+
+`qts(dt)`를 통째로 어느 한 액터에 주는 선택지는 **둘 다 §3을 깬다.**
+
+| 안 | 결과 |
+|---|---|
+| Actor 2가 전부 실행 | 철회된 결정 5. Actor 1의 `Portfolio`·`open_orders`·원장을 읽고 쓴다 |
+| Actor 1이 전부 실행 | 사용자 전략 코드가 "빠르고 정확해야 하는" 액터에서 돈다 — §3의 분리 근거 자체가 소멸 |
+| **쪼갠다 (채택)** | 상태 의존이 시작되는 지점에서 잘라 각 조각을 상태가 있는 액터에 준다 |
+
+**이음매의 위치는 코드가 정한다.** `pcm.py`의 `__call__`에서 브로커를 처음 읽는 줄이 274행
+(`_obtain_full_asset_list`)이고, 그 앞의 `alpha_model(dt)`(260) · `risk_model`(267) ·
+`optimiser`(270)는 브로커를 **전혀 읽지 않는다**(`fixed_weight.py`에 `broker.` 참조 0건).
+따라서 이음매는 270행과 274행 사이다 — 임의로 고른 자리가 아니라 상태 의존이 시작되는 경계다.
+
+```
+Actor 2 (느려도 됨, 브로커 상태 무의존)      Actor 1 (빠르고 정확, 상태 소유)
+  alpha_model(dt)                              _obtain_full_asset_list  ← 보유 종목
+  risk_model(dt, weights)        TargetWeights  order_sizer             ← 현금·평가액
+  optimiser(dt, weights)         ─────────────▶ _generate_rebalance_orders
+                                  (dt, weights)  execution_algo
+                                                 submit_order           ← open_orders·원장
+```
+
+- **메시지는 `TargetWeights(dt, weights)` 하나.** 작은 불변 dataclass이므로 `messaging`의
+  리프 경계를 그대로 지킨다. 반대 안(스냅샷을 넘겨 PCM 전체를 Actor 2에서 돌리기)은 사이저
+  3종을 스냅샷 기반으로 고쳐야 하고 메시지가 엔진 타입인 `Order` 리스트를 실어야 해서
+  리프 경계가 흔들린다.
+- **사이저는 손대지 않는다.** `dollar_weighted.py`·`long_short.py`는 `self.broker`를 그대로
+  들고 있어도 된다 — 이제 그것들이 Actor 1 쪽에서 돌기 때문이다.
+- **`QuantTradingSystem.__call__`이 둘로 갈린다.** 이것이 결정 9의 실제 구현 비용이며,
+  `qts(dt)` 한 줄 호출이 사라지는 유일한 지점이다.
+
+### 결정 10 — Actor 2는 계좌 상태를 갖지 않는다. 필요하면 이벤트에 실려 온다
+
+§3에서 유도한 제약("전략은 브로커에게 물어볼 수 없다")의 실무 귀결이다.
+**초안보다 좁혀졌다** — 검토 결과 주 경로에는 계좌 상태가 아예 필요 없다는 것이 드러났다.
+
+**주 경로에는 필요 없다.** 결정 9의 이음매 앞에서 Actor 2가 하는 일은 `alpha_model` →
+`risk_model` → `optimiser`이고 산출물은 **목표 가중치**다. 가중치는 무차원 비율이라 현금도
+평가액도 필요하지 않으며, 실제로 그 셋은 `broker.`를 한 번도 참조하지 않는다. 현금이 처음
+필요해지는 곳은 사이저(`dollar_weighted.py:80`)이고 그것은 이음매 **뒤쪽** = Actor 1이다.
+따라서 `RebalanceDue`는 **시각만 싣는다.**
+
+**사용자 전략이 굳이 원할 때만 싣는다.** "낙폭이 X를 넘으면 현금화" 같은 전략은 계좌 값을
+본다. 그때는 Actor 1이 이벤트를 만들 때 스냅샷을 함께 실어 보낸다 — 조회는 §6.3 위반이고
+물어보면 데드락이므로 다른 길이 없다. 이것은 **주 경로가 아니라 선택 기능**이며, 필요해질
+때 설계한다(부록 A-7).
+
+**스냅샷이 오히려 정확하다.** ADR-0006은 "사이저가 모든 목표를 하나의 스냅샷에서 만들었다"를
+전제로 한다. 계산 도중 실시간 조회를 하는 편이 그 전제에서 벗어난 쪽이다.
+
+#### 결정 10-a — Actor 1 상태의 로컬 미러링 금지
+
+"체결 메시지의 델타로 Actor 2가 자기 현금을 갱신한다"는 액터 모델의 정석적인 해법이지만,
+**이 엔진에서는 채택하지 않는다.** 검토 결과 성립하지 않는다.
+
+- **스트림이 불완전하다.** 현금은 주문 이벤트가 아닌 이유로도 움직인다 —
+  `seed_from_venue()`는 `live_broker.py:242·259`에서 `portfolio.cash = balance.cash`로
+  **절대값을 대입**하고(델타가 아니다), 벤더의 현금은 `prvs_rcdl_excc_amt`(가주문 정산금액)라
+  D+2 결제·배당·권리락으로도 변한다. 그런 사실은 주문 스트림에 원리적으로 실리지 않는다.
+- **드리프트가 조용하다.** 로컬 값이 진실과 벌어져도 아무것도 감지하지 못한다. 원칙 1의
+  관점에서 이는 결측보다 나쁘다 — 결측은 위로 전파되어 전략이 정직한 결정을 내리게 하지만,
+  벌어진 복제본은 **그럴듯한 값으로 메운 것**이라 정상값과 구분되지 않는다.
+- **설계 방향과 반대다.** 이 엔진은 파생 상태를 불신한다. `reconcile()`이 매 기동 벤더에서
+  진실을 다시 읽고 과대 보유 시 `halt_trading`까지 거는 이유가 그것이다. 절대 화해하지 않는
+  두 번째 복제본을 들이는 것은 그 규율을 우회하는 일이다.
+
+**구분:** 같은 델타라도 용도에 따라 갈린다.
+
+| 용도 | 출처 | 근거 |
+|---|---|---|
+| **사이징** (주문 수량 결정) | Actor 1의 권위 있는 값 | 틀리면 실제 주문이 틀린다 |
+| **전략 로직** (내 진입이 채워졌나, 현재 익스포저) | 이벤트 델타 누적, Actor 2 로컬 | 틀려도 회계 무손상, 기동마다 리셋 |
+
+즉 **Actor 1의 현금·포지션을 미러링하는 것은 금지**, **전략 자신의 장부를 이벤트로 쌓는 것은
+허용**이다. 후자는 Actor 2가 소유해도 되는 자기 상태다(§3 소유권표).
+
+### 결정 11 — 생명주기 이벤트의 수신자와 생산자
+
+**규칙: 한 이벤트에는 수신자가 하나다.** 같은 메시지를 두 메일박스에 뿌리면 그것은
+메일박스가 아니라 이벤트 버스이고(§6.4), 더 나쁜 것은 두 액터가 **순서 없이 동시에** 그
+사실을 처리하게 된다는 점이다. 다른 액터도 알아야 할 일이면, 수신자가 자기 일을 끝낸 뒤
+**새 과거형 통지를 보낸다** — 그때는 이미 일어난 일이므로 시제도 맞는다.
+
+이 규칙을 세 이벤트에 적용하면 수신자가 갈린다. 판정 기준은 §3 소유권표다 — 핸들러가
+만지는 상태를 가진 액터가 수신자다.
+
+| 이벤트 | 수신자 | 핸들러가 하는 일 | 근거 |
+|---|---|---|---|
+| `RebalanceDue` | **Actor 2** | alpha·risk·optimiser → `TargetWeights` 발신 | 브로커 상태 무의존(결정 9) |
+| `PollDue` | **Actor 1** | 미결 주문 조회, 체결 기표, 마킹 | `open_orders`·`Portfolio` |
+| `EndOfDay` | **Actor 1** | 평가·`record_equity()` | `Portfolio`·원장 |
+
+**생명주기 이벤트가 한 메일박스에 모이지 않는다**는 것이 이 결정의 실질이다. 셋 중 둘이
+Actor 1로 간다.
+
+#### 생산자 — 평면마다 다르고, 이미 코드에 자리가 있다
+
+| 이벤트 | 백테스트 | cron 라이브 | 상주 (Phase 1) |
+|---|---|---|---|
+| `PollDue` | 매 `SimulationEvent`의 `broker.update(dt)` (`backtest.py:416`) | `broker.update(now, force=True)` (`live.py:170·239`) | 스케줄러 / `settle` 루프 |
+| `RebalanceDue` | `_is_rebalance_event(dt)`가 참일 때 (`:432·440`) | `qts(now)` 자리 (`live.py:190`) | 스케줄러 |
+| `EndOfDay` | `event_type == "market_close"` (`:445`) | `run_end_of_day()` (`live.py:222`) | 스케줄러 |
+
+새 개념을 들이는 것이 아니라 **이미 있는 세 호출 지점에 이름을 붙이는 것**이다. 백테스트
+루프는 이미 셋을 순서대로 실행하고 있다 — 폴링, 리밸런스, 그리고 장 마감의 평가.
+
+#### 두 메일박스로 갈라도 순서가 깨지지 않는 이유
+
+메일박스가 둘이면 그 사이에는 전역 순서가 없다. 그런데도 안전한 것은 **결정 9가 순서가
+필요한 일을 전부 Actor 1 안으로 옮겼기** 때문이다.
+
+지켜져야 할 순서는 하나뿐이다 — **체결이 기표된 뒤에 사이징한다.** 그리고 그 둘은 이제
+같은 FIFO에 있다.
+
+```
+생산자: PollDue ──▶ [Actor 1 큐]        생산자: RebalanceDue ──▶ [Actor 2 큐]
+                                                                    │
+        [Actor 1 큐] ◀────────── TargetWeights ──────────────────────┘
+
+Actor 1 큐의 순서:  PollDue  →  …  →  TargetWeights
+                    (기표)          (사이징)          ← FIFO가 보장
+```
+
+Actor 2가 아무리 느려도 `TargetWeights`는 `PollDue` **뒤에** 줄을 선다. 결정 9 이전이었다면
+사이징이 Actor 2에 있어 이 보장이 성립하지 않았다.
+
+#### Phase 0에서 실제로 배선하는 것
+
+**`RebalanceDue`만 배선한다.** `PollDue`·`EndOfDay`는 수신자와 생산자를 여기서 정해 두되
+호출 지점은 그대로 둔다. Phase 0의 수용 기준은 `.dat` 완전 일치이고, 폴링·평가 경로까지
+동시에 이벤트로 감싸면 그 기준이 검증하는 표면이 불필요하게 넓어진다. `settle()`의 내부
+폴링 루프를 `PollDue` 스트림으로 바꾸는 것은 시간 예산이 스케줄러로 넘어가는 Phase 1의
+일이다.
 
 ---
 
 ## 5. 인터페이스 스케치
 
-비규범적이다 — 구현하며 조정될 수 있고, 계약으로 고정되는 것은 §4의 결정 8개다.
+비규범적이다 — 구현하며 조정될 수 있고, 계약으로 고정되는 것은 §3과 §4의 결정 9개다.
 
 ```python
 # vmtrader/alpha_model/  (스텁 재작성 — 부록 A-1)
@@ -279,18 +526,18 @@ class BaseStrategyExecutor(Thread):
         self._strategy = strategy
         self._synchronous = synchronous   # 조립부 한 곳에서만 결정 (결정 4, D3)
         self._on_error = on_error
-        self._queue = queue.Queue()       # 무제한 + 깊이 계측 (결정 8)
+        self._mailbox = Mailbox('strategy-executor')   # 결정 8 — vmtrader/messaging
 
     # ── 브로커 액터가 부르는 면 (fire-and-forget) ──
     def post_event(self, event):
         if self._synchronous:
-            self._handle(event)           # 백테스트·cron 단발: 큐 우회, 스레드 0개
+            self._dispatch(event)         # 백테스트·cron 단발: 큐 우회, 스레드 0개
         elif not self.is_alive():
             raise RuntimeError(           # 가드 1: 소비자 없는 적재 = 조용한 유실 금지
                 'threaded executor가 시작되지 않았거나 이미 정지했다'
             )
         else:
-            self._queue.put(event)
+            self._mailbox.post(event)
 
     def start(self):
         if self._synchronous:
@@ -302,11 +549,11 @@ class BaseStrategyExecutor(Thread):
     # ── 소비 루프 — §6.7 규약을 직접 지킨다 (결정 2의 비용) ──
     def run(self):
         while True:
-            event = self._queue.get()
-            if event is None:             # poison pill
+            event = self._mailbox.take()
+            if event is None:             # close 센티넬
                 break
             try:
-                self._handle(event)
+                self._dispatch(event)
             except Exception as error:    # 소비자 루프는 죽지 않는다 (§6.7 ②)
                 logger.error(...)
                 if self._on_error is not None:
@@ -314,13 +561,15 @@ class BaseStrategyExecutor(Thread):
         self._strategy.on_stop()
 
     # ── 두 모드가 공유하는 유일한 핸들러 경로 (D3 불변식 1) ──
-    def _handle(self, event): ...
-        # 이벤트 타입별로 전략 훅 디스패치. Portfolio에는 절대 기표하지 않는다(결정 6)
+    def _dispatch(self, event): ...
+        # 이벤트 타입별로 전략 훅 디스패치. Portfolio에는 절대 기표하지 않는다(결정 6).
+        # RebalanceDue는 qts(dt)를 부르지 않는다 — 목표 가중치까지만 계산하고
+        # TargetWeights를 Actor 1에 보낸다(결정 9, 부록 C).
 
     # ── 세션 조립부가 부르는 면 ──
     def stop(self, timeout=None):
-        """정상 종료 경로: poison pill → join. daemon은 안전판이지 이 경로가 아니다."""
-        self._queue.put(None)
+        """정상 종료 경로: close → join. daemon은 안전판이지 이 경로가 아니다."""
+        self._mailbox.close()             # 잔량 소화 후 센티넬 — 이후 post는 MailboxClosed
         self.join(timeout)
         # timeout 초과 시에도 프로세스 종료는 막히지 않는다 — daemon=True (결정 3)
 ```
@@ -330,6 +579,12 @@ class BaseStrategyExecutor(Thread):
 1. `post_event`의 결과를 **기다리지 않는다** — 소비자 스레드가 자기 자신을 기다리는
    데드락이 된다(§6.7 ③). API 자체를 fire-and-forget으로만 두어 구조적으로 막는다.
 2. `Portfolio`를 직접 만지지 않는다(§4 결정 6). **daemon=True의 안전 전제이므로 예외 없다.**
+3. 브로커의 **조회 API도 부르지 않는다** — 읽기라도 다른 액터의 상태를 그 액터의 스레드
+   밖에서 만지는 것이다. 필요한 값은 이벤트에 실려 온다(결정 10). 1번과 2번이 각각
+   "기다리지 마라"와 "쓰지 마라"였다면, 이것은 "읽지도 마라"다.
+4. Actor 1의 상태를 **로컬로 복제해 두지 않는다**(결정 10-a). 3번을 조회로 우회할 수 없듯
+   델타 누적으로도 우회할 수 없다 — 조회는 시끄럽게 틀리지만 벌어진 복제본은 **조용히**
+   틀린다. 전략 자신의 장부를 쌓는 것은 이 금지에 해당하지 않는다.
 
 ---
 
@@ -493,18 +748,49 @@ Alan Kay의 "객체지향의 본질은 메시지 전달"이 문자 그대로 구
 | **0** | 현행 — 백테스트 + cron 단발 라이브 | `synchronous=True` (두 평면 모두, `start()` 안 함) | **0** | 이 설계안 채택 |
 | **1** | 상주 프로세스 + push 이벤트 (WS 실시간 시세 / 체결 통지) | 라이브만 `synchronous=False` + `start()`, 백테스트는 동기 유지 | **+1** (`strategy-executor`, daemon) | **ADR-0009 전제 변경 — 새 ADR 필요** |
 
-**Phase 0이 실제로 바꾸는 것:** 합류점 `qts(dt)` 직접 호출 → executor 경유
-(`post_event(RebalanceDue(dt))` → 동기 → `_handle` → `qts(dt)`).
-동작은 오늘과 비트 단위로 같아야 하며(`.dat` 완전 일치 e2e가 그대로 통과), 얻는 것은
-**두 평면이 공유하는 단일 핸들러 경로**라는 구조다.
+**Phase 0이 실제로 바꾸는 것 (v3에서 재정의):** 철회된 결정 5는 이것을 "`qts(dt)` 호출을
+executor 경유로 바꾸는 것"이라고 적었으나, 결정 9에 따라 Phase 0의 내용은 **`qts(dt)`를
+이음매에서 쪼개고 그 사이를 `TargetWeights` 메시지로 잇는 것**이다.
+
+```
+[오늘]      qts(dt) ──────────────────────────────────────▶ 주문 제출
+[Phase 0]   RebalanceDue → Actor2: alpha·risk·optimiser
+                         → TargetWeights → Actor1: 사이징·차분·제출     (스레드 0개)
+[Phase 1]   같은 코드, 두 메일박스가 각자의 스레드에서 소비              (스레드 +1)
+```
+
+동작은 오늘과 비트 단위로 같아야 한다 — 계산 순서가 바뀌지 않으므로 `.dat` 완전 일치 e2e가
+그대로 통과해야 하고, **그 통과가 결정 9의 유일한 수용 기준**이다. 얻는 것은 두 평면이
+공유하는 단일 핸들러 경로이자, 상주 전환 날 액터 경계를 새로 그을 필요가 없는 상태다.
+
+Phase 0이 v2보다 커진 것은 사실이다. 대신 v2의 Phase 0은 **Phase 1에서 반드시 다시 뜯어야
+하는** 구조였다 — 그때 드러날 위반을 지금 값으로 치르는 것과 같다.
 
 **Phase 1에서 함께 재검토해야 하는 것** (전제가 바뀌므로 되살아나는 축들):
 
+- **Actor 1의 스레드 — 미결.** §3은 Actor 1에 "브로커 소비자 1개"(daemon=False)를 그려
+  두었으나 위 표는 `strategy-executor` **하나만** 추가한다. 즉 §3이 주장하는 스레드를 어느
+  Phase도 만들지 않는다. 결정 5가 §3의 소유권을 위반했던 것과 같은 종류의 미해결이며,
+  Phase 1 ADR에서 반드시 결론이 나야 한다. 딸린 것들: `fill-pump`가 Actor 1 안으로
+  들어가는가(그러면 결과를 버퍼가 아니라 메일박스로 넘기게 되어 **`_buffer_lock`이
+  사라진다** — §1-3의 감시 항목), 원장 SQLite 연결을 어느 스레드가 여는가
+  (`ledger.py:63`은 `check_same_thread`를 끄지 않았다).
+- **결정 3의 재작성 — 위 항목에 종속.** 결정 3의 비대칭 표는 `fill-pump`를 Actor 1 칸에
+  넣었는데, `fill-pump`는 `settle()` 안에서 나고 죽는 태스크 워커일 뿐 상태를 소유하는
+  메일박스 소비자가 아니다. 두 스레드가 모두 daemon=False인 것은 맞으나 근거가 다르다 —
+  워커는 드레인 배리어([ADR-0008](adr/0008-task-queue-fill-pump.md)), 소비자는 회계 상태
+  소유. 스레드가 셋이고 액터가 둘이므로 규칙도 "액터별로 갈린다"가 아니라 **"생사에 걸린
+  상태를 소유하면 비데몬, 사용자 코드면 데몬"** 으로 다시 써야 한다.
+- **`EndOfDay`가 리밸런스를 앞지를 수 있다 (결정 11의 잔여 위험).** 클럭이 `RebalanceDue`를
+  Actor 2에, `EndOfDay`를 Actor 1에 각각 보내면, Actor 2를 거쳐 오는 `TargetWeights`보다
+  `EndOfDay`가 Actor 1 큐에 먼저 설 수 있다 — 그날 거래 전 자산으로 곡선이 기록된다.
+  동기 모드(Phase 0)에서는 전부 인라인이라 발생하지 않는다. 해법 후보: 리밸런스 뒤에
+  와야 하는 것은 클럭이 아니라 **Actor 2가 보내게** 하거나, EOD를 그 순간 기표된 것의
+  스냅샷으로 정의하고 다음 EOD가 정정하게 두는 것.
 - D2-a 백프레셔 — WS 생산자가 생기면 "유계 게시량" 논리가 실효 (결정 8)
+- `PollDue` 배선 — `settle()`의 내부 폴링 루프를 이벤트 스트림으로 전환 (결정 11)
 - `threading.Event` / `SIGINT`·`SIGTERM` 핸들러 (§2, [보고서 20260822-01 §7](reports/20260822-01-worker-lifecycle-and-shutdown.md))
-- 종료 순서: 생산자(브로커 액터) 먼저 정지 → executor `stop(timeout)` (기동의 역순).
-  join timeout 초과 시 daemon 플래그가 프로세스 종료를 보장한다 — 잘린 콜백의 주문은
-  다음 기동 `reconcile()`이 정산 (결정 3)
+- 종료 순서: 부록 C-5 (클럭 → Actor 2 → Actor 1, 기동의 역순)
 
 ---
 
@@ -513,11 +799,17 @@ Alan Kay의 "객체지향의 본질은 메시지 전달"이 문자 그대로 구
 구현 착수 시 순서대로. 각 항목은 같은 커밋에서 문서·테스트가 함께 움직인다
 ([`architecture-map.md`](architecture-map.md) §7 규칙).
 
-1. **스텁 완성** — `alpha_model/base_strategy_executor.py`를 §5 스케치대로.
-   철자 교정(`BaseStrategyExcutor` → `BaseStrategyExecutor`), 큐·`run()` 루프·런타임 가드 2개
-   (결정 4) 구현, `BaseStrategy` 신설(`alpha_model/base_strategy.py`).
-2. **이벤트 타입 정의** — dataclass, 상관관계 ID 포함, 원장 상태 enum과 분리(결정 7).
-3. **테스트로 고정할 것** (Phase 0):
+1. ~~**스텁 완성**~~ — **완료.** `BaseStrategyExecutor`(메일박스 루프·가드 2개·`daemon=True`)와
+   `BaseStrategy`(`on_start`/`on_fill`/`on_stop`, 전부 무동작). 두 평면의 합류점이
+   `post_event(RebalanceDue(dt))`를 지난다.
+2. ~~**이벤트 타입 정의**~~ — **완료.** `vmtrader/messaging/`에 이벤트 9종
+   (주문 6 + 생명주기 3) + `Mailbox` + `TradingEventMessage` 기반 계약.
+   상관관계 ID·원장 상태 분리·리프 경계·세 플래그를 `tests/unit/messaging/` 3파일이
+   고정(결정 7·8). **단, 아직 아무도 쓰지 않는다** — 생산자 0, 소비자 0.
+3. ~~**`TargetWeights` 신설과 `qts` 분할**~~ (결정 9) — **완료.** 부록 C-6의 1~3단계.
+   이음매가 메시지 경계가 됐고 `.dat` 완전 일치가 통과한다. 남은 것은 그 경계에 executor를
+   끼우는 1번뿐이며, 그때까지도 스레드는 0개다.
+4. **테스트로 고정할 것** (Phase 0):
    - 동일 이벤트열에 대해 동기/스레드 모드 처리 결과 동일 — 동형성(원칙 2, D3 불변식 1)
    - 동기 모드 반복 실행의 결정론 — 기존 `.dat` 완전 일치 e2e 통과가 그대로 증거
    - **`daemon=True` 플래그 직접 단언** — 사용자 결정(결정 3)을 코드로 고정.
@@ -529,20 +821,149 @@ Alan Kay의 "객체지향의 본질은 메시지 전달"이 문자 그대로 구
    - `stop()` 이후 `start()` 재호출이 거부됨 — 재시작 = 새 인스턴스 규약
    - executor 경로가 `Portfolio`에 기표하지 않음 — **결정 3의 안전 전제이므로 최우선**
      (기존 vendor-boundary AST 테스트 방식 참고)
-4. **훅 표면 확정** — `BaseStrategy`의 `on_start`/`on_fill`/`on_stop` 시그니처와 호출 시점.
+   - **executor 경로가 브로커 조회 API도 부르지 않음**(결정 10, §5 금지 규칙 3) — 같은
+     AST 방식으로 `get_portfolio_*`·`get_account_*` 호출 부재를 단언
+   - **`.dat` 완전 일치 e2e** — 결정 9의 분할이 계산을 바꾸지 않았다는 유일한 증거
+5. **훅 표면 확정** — `BaseStrategy`의 `on_start`/`on_fill`/`on_stop` 시그니처와 호출 시점.
    ABC(`AlphaModel`)는 건드리지 않으므로 `test_abstract_base_classes.py` 무변경.
-5. **채택 시 문서 갱신** — `architecture-map.md` §3(모듈 지도)·§4(확장점)·§6(D2/D3 행 상태
+   이벤트가 9종이 됐으므로 어느 이벤트에 훅을 열지도 함께 정한다 — 전부 열 필요는 없다.
+6. **채택 시 문서 갱신** — `architecture-map.md` §3(모듈 지도)·§4(확장점)·§6(D2/D3 행 상태
    재평가 — 특히 daemon 비대칭 정책을 D2 불변식 3 행에 기록), 이 문서의 Status를 "구현됨"으로.
-6. **Phase 1 진입 시** — 새 ADR(상주 전환) 작성, §7의 재검토 목록 처리.
+7. **보류 — 스냅샷의 표현**(결정 10): 주 경로에 계좌 상태가 필요 없다는 것이 확인되어
+   **급하지 않다.** 계좌 값을 보는 사용자 전략이 실제로 생길 때 착수한다. 그때의 선택지는
+   `AccountBalance`·`Holding`을 평평한 값으로 다시 쓰거나 타입을 `messaging`으로 옮기는 것이며,
+   후자여도 리프 경계는 유지된다(리프가 엔진을 import하지 않으면 될 뿐, 그 반대는 허용).
+8. **Phase 1 진입 시** — 새 ADR(상주 전환) 작성, §7의 재검토 목록 처리.
+
+---
 
 ## 부록 B. 관련 문서
 
 | 문서 | 관련 |
 |---|---|
-| [`architecture-principles.md`](architecture-principles.md) D1~D3, D13, D14 | 직렬 실행·단일 소비자·모드 전환·비대칭 정책·생명주기 — 이 설계의 잣대 |
+| [`architecture-principles.md`](architecture-principles.md) 원칙 1, D1~D3, D13, D14 | 데이터 정직성·직렬 실행·단일 소비자·모드 전환·비대칭 정책·생명주기 — 이 설계의 잣대 |
 | [`architecture-map.md`](architecture-map.md) §2·§4·§6 | 현행 실행 순서, ABC 목록, D2/D3 적용 상태(정본) |
-| [ADR-0006](adr/0006-decouple-submit-from-fill.md) | 접수·체결 분리 — executor가 받는 이벤트의 발원지 |
+| [ADR-0006](adr/0006-decouple-submit-from-fill.md) | 접수·체결 분리 — Actor 1이 발행하는 이벤트의 발원지, 결정 10의 "하나의 스냅샷" 근거 |
 | [ADR-0008](adr/0008-task-queue-fill-pump.md) | `TaskQueueWorker`·fill-pump daemon=False·회계 단일 작성자 — 결정 3 비대칭의 한쪽 축, 결정 6의 근거 |
-| [ADR-0009](adr/0009-cron-oneshot-live-session.md) | cron 단발 전제 — 결정 5와 Phase 게이트, 그리고 "reconcile이 잘린 콜백을 정산한다"(결정 3)의 근거 |
-| [보고서 20260822-01](reports/20260822-01-worker-lifecycle-and-shutdown.md) | 워커 수명·종료 시퀀스 분석 |
-| [`testing.md`](testing.md) | 부록 A-3의 테스트가 따를 작성 규약 |
+| [ADR-0009](adr/0009-cron-oneshot-live-session.md) | cron 단발 전제 — Phase 게이트, 그리고 "reconcile이 잘린 콜백을 정산한다"(결정 3·부록 C-5)의 근거 |
+| [보고서 20260822-01](reports/20260822-01-worker-lifecycle-and-shutdown.md) | 워커 수명·종료 시퀀스 분석 — 부록 C-5의 선행 작업 |
+| [`testing.md`](testing.md) | 부록 A-4의 테스트가 따를 작성 규약 |
+| KIS `H0STCNI0` (국내주식 실시간체결통보) | 주문 이벤트 6종의 근거 — "주문·정정·취소·거부 접수 통보 와 체결 통보" |
+
+---
+
+## 부록 C. Actor 2 → Actor 1 메시징
+
+v2까지 §3 그림에는 **Actor 1 → Actor 2 화살표만** 있었다. 그래서 "전략이 주문을 내려면
+어떻게 하나"라는 질문에 문서가 답을 갖고 있지 않았고, 그 빈자리를 결정 5가 "그냥 `qts(dt)`를
+부르면 된다"로 메웠다가 §3을 위반했다. 이 부록이 그 화살표를 정의한다.
+
+### C-1. 두 방향은 대칭이 아니다
+
+| | Actor 1 → Actor 2 | Actor 2 → Actor 1 |
+|---|---|---|
+| 시제 | **과거형** — "체결됐다" | **명령형** — "이 목표로 주문을 내라" |
+| 내용 | 벤더가 알려준 사실 | 전략이 내린 결정 |
+| 실패 시 | 전략이 못 받아도 회계는 무손상 | 유실되면 **리밸런스가 통째로 사라진다** |
+| 어휘 위치 | `messaging/order.py` (구현됨) | `messaging/command.py` (**신설 필요**) |
+
+**시제를 섞지 않는다.** `order.py`의 모듈 docstring은 "Every event is past tense... it reports
+a fact, it does not request an action"이라고 선언한다. 명령을 같은 모듈에 두면 그 선언이
+거짓이 된다. 파일을 나누는 것이 규칙을 지키는 가장 싼 방법이다.
+
+**손실 허용도가 다르므로 유실 처리도 다르다.** 통지 유실은 다음 폴링이 복구하지만, 명령
+유실은 그날 거래가 없었던 것과 같다. 따라서 Actor 1 메일박스는 `daemon=False` 소비자를 갖고
+(§4 결정 3), 닫힌 메일박스에의 명령 게시는 `MailboxClosed`로 **시끄럽게** 실패해야 한다.
+
+### C-2. 어휘 — `TargetWeights` 하나로 시작한다
+
+```python
+# vmtrader/messaging/command.py  (신설)
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TargetWeights(TradingEventMessage):
+    """전략이 목표 가중치를 정했다. 사이징과 제출은 받는 쪽의 몫이다."""
+    event_name: ClassVar[str] = TradingEvent.TARGET_WEIGHTS   # 'target_weights'
+
+    dt: pd.Timestamp
+    weights: tuple      # ((symbol, weight), ...) — dict가 아니라 tuple인 이유는 C-3
+```
+
+**주문 1건짜리 명령(`SubmitOrder`)을 두지 않는 이유:** 그것을 두면 사이징이 Actor 2로
+끌려온다. 사이징은 현금과 보유 수량을 읽어야 하므로 Actor 1의 일이고(결정 9), 가중치가
+액터 경계를 넘는 **유일한 값**이어야 그 경계가 흐려지지 않는다.
+
+**정정·취소 명령은 지금 두지 않는다.** 현행 실행 알고리즘은 시장가 단발이라 정정할 것이
+없다. 필요해지면 그때 `AmendOrder`·`CancelOrder`를 이 모듈에 더한다 — 어휘를 미리 늘리면
+발행자 없는 토픽이 남는다(결정 7의 어휘 관리 원칙).
+
+### C-3. 불변성 — `dict`를 그대로 실으면 안 된다
+
+`weights`는 `pcm.py`가 만드는 `dict{str: float}`인데, dataclass가 `frozen`이어도 **담긴
+dict는 여전히 가변**이다. 보낸 쪽이 다음 사이클에 같은 dict를 재사용하거나 수정하면 받는
+쪽이 보는 값이 바뀐다 — 스레드 경계를 넘는 공유 가변 상태이며, 메일박스가 없애려던 바로 그
+것이다.
+
+따라서 **생성 시점에 불변으로 굳힌다.** `tuple(sorted(weights.items()))`가 가장 싸다.
+정렬은 부수 효과로 결정론까지 준다 — 같은 가중치 집합이 항상 같은 순서로 도착하므로
+`.dat` 완전 일치 e2e가 dict 순서에 흔들리지 않는다.
+
+이 함정은 `frozen=True`가 잡아주지 못하므로 **테스트로 고정한다** — 보낸 뒤 원본 dict를
+수정해도 수신 값이 그대로인지 단언한다.
+
+### C-4. 결선 — 누가 누구를 아는가
+
+```
+조립부 (trading/backtest.py · trading/live.py)
+   │
+   ├─ executor = BaseStrategyExecutor(strategy, synchronous=..., broker=broker)
+   └─ broker.attach_executor(executor)
+```
+
+**양방향 참조가 필요하지만 순환 import는 아니다.** 두 액터 모두 `messaging`(리프)만
+import하고 서로의 모듈은 import하지 않는다 — 참조는 조립부가 런타임에 꽂아 넣는 객체
+참조일 뿐이다. 이것이 §4 결정 7이 어휘를 리프 패키지에 둔 이유의 실제 값어치다.
+
+**모드는 여전히 조립부 한 곳에서 정한다**(결정 4). 동기 모드면 양쪽 `post_*`가 호출
+스레드에서 즉시 핸들러를 타고, 스레드 모드면 각자의 메일박스에 적재된다. 호출부는 어느
+쪽인지 알지 못하며 알 필요도 없다.
+
+### C-5. 순환 정지 문제 — 이 구조의 유일한 새 위험
+
+두 액터가 서로에게 메시지를 보내므로 **종료 순서가 자명하지 않다.** 한쪽을 먼저 닫으면
+다른 쪽이 아직 보낼 것이 남아 있을 수 있다.
+
+규칙은 **기동의 역순**이며 생산의 상류부터 끊는다.
+
+1. 클럭(생산자)을 멈춘다 — 새 `RebalanceDue`가 더는 생기지 않는다.
+2. Actor 2를 `stop(timeout)` — 처리 중이던 리밸런스가 마지막 `TargetWeights`를 보낸다.
+3. Actor 1을 `stop(timeout)` — 그 마지막 명령까지 소화하고 닫힌다. `daemon=False`이므로
+   여기서 join이 곧 회계 배리어다.
+
+2번이 timeout을 넘기면 Actor 2는 `daemon=True`라 잘린다. 잘린 자리에서 보내려던 명령은
+유실되지만 **회계는 무손상**이고(결정 6), 접수됐을지 모를 주문은 다음 기동의 `reconcile()`이
+정산한다(ADR-0009). 순서를 3→2로 뒤집으면 이 안전성이 사라진다 — Actor 1이 먼저 닫힌 뒤
+Actor 2가 명령을 보내면 `MailboxClosed`가 전략 콜백 안에서 터진다.
+
+### C-6. 착수 순서
+
+1. ~~`messaging/command.py`에 `TargetWeights` + `TradingEvent.TARGET_WEIGHTS` 신설~~ —
+   **완료.** 기존 계약 테스트가 세 플래그·토픽 유일성을 자동으로 검사하고, C-3의 불변성은
+   `test_events.py`가 세 가지로 고정한다(원본 dict 수정이 새어 들지 않음, `as_dict()`가
+   매번 새 사전을 냄, 같은 내용이면 같은 메시지).
+2. ~~`PortfolioConstructionModel`·`QuantTradingSystem`을 이음매에서 분할~~ — **완료.**
+   `decide_weights` / `build_orders`(PCM), `decide_weights` / `size_and_submit`(QTS).
+   `__call__`은 둘을 이어 붙여 그대로 남으므로 `backtest.py`·`live.py`는 무변경.
+3. ~~두 메서드 사이를 `TargetWeights`로 잇는다~~ — **완료.** `.dat` 완전 일치 e2e 통과.
+   `size_and_submit`은 느슨한 인자가 아니라 **메시지를 통째로** 받는다 — 큐가 놓여도
+   경계가 다시 움직이지 않게 하기 위해서다.
+   경계는 `test_qts.py`가 고정한다: 어떤 속성 접근에도 raise하는 브로커를 꽂고
+   `decide_weights`가 무사히 끝나는지 본다(침범 시 침범한 호출 이름이 그대로 뜬다),
+   그리고 `size_and_submit`이 시계가 아니라 **명령 자신의 `dt`** 를 쓰는지 본다.
+4. ~~executor 스텁을 완성한다~~ — **완료.** `BaseStrategy`(훅 3종, 전부 무동작)와
+   `BaseStrategyExecutor`(메일박스 루프, 가드 2개, `daemon=True`)를 구현하고 두 평면의
+   합류점을 `post_event(RebalanceDue(dt))` 경유로 바꿨다. 양쪽 모두 `synchronous=True`라
+   **스레드는 여전히 0개**이며, `.dat` 완전 일치 e2e가 그대로 통과한다.
+   구현하며 결정 2의 상속 비용이 실제로 드러났다 — `_handle` 이름 충돌(결정 2의 3번 항목).
+
+**Phase 0 완료.** 액터 구조가 동기 모드에서 완성됐고, 스레드를 켜는 일만 Phase 1에 남았다.
