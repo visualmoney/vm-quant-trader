@@ -209,6 +209,121 @@ def test_incremental_fills_are_booked_once_each(tmp_path):
     assert [row['quantity'] for row in fills] == [3, 4, 3]
 
 
+def test_incremental_fees_are_charged_once_each(tmp_path):
+    """
+    Tests that cumulative costs become increments, like quantities.
+
+    The venue reports estimated costs for the order as a whole, so
+    passing the figure through on every poll charges the running total
+    again each time. An order filling in three parts paid its costs
+    three times over, and the money came out of cash.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    fills = broker.ledger.get_fills(order.order_id)
+    assert [row['fees'] for row in fills] == [30.0, 40.0, 30.0]
+    # The venue's final figure, charged exactly once between them.
+    assert sum(row['fees'] for row in fills) == 100.0
+
+
+def test_a_multi_increment_fill_costs_cash_only_once(tmp_path):
+    """
+    Tests the arithmetic the increment conversion exists to protect.
+
+    Booking is what moves cash, so the ledger being right is only half
+    the claim. Ten shares at 10,000 with 100 of costs must leave cash
+    exactly 100,100 lighter however many polls it took to get there.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 100.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path, cash=1000000.0)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    assert broker.get_portfolio_cash_balance(broker.account_id) == (
+        1000000.0 - 100000.0 - 100.0
+    )
+
+
+def test_a_revised_cost_estimate_is_not_lost(tmp_path):
+    """
+    Tests that a cost revision without new quantity survives.
+
+    The figure is an estimate and the venue may restate it, so a poll
+    can bring a new cost and no new shares. The booked total advances
+    only alongside an increment, which is what folds such a revision
+    into the next one instead of dropping it.
+    """
+    plan = {
+        '0001': [
+            OrderReport('0001', 5, 10000.0, 5, 0, 50.0, False),
+            # Same quantity, costs restated upward.
+            OrderReport('0001', 5, 10000.0, 5, 0, 65.0, False),
+            OrderReport('0001', 10, 10000.0, 0, 0, 120.0, True),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    fills = broker.ledger.get_fills(order.order_id)
+    # The middle poll books nothing; its 15 of revision rides along
+    # with the final increment rather than vanishing.
+    assert [row['fees'] for row in fills] == [50.0, 70.0]
+    assert sum(row['fees'] for row in fills) == 120.0
+
+
+def test_recovery_does_not_recharge_costs_already_booked(tmp_path):
+    """
+    Tests that a restart resumes the cost total, not just the quantity.
+
+    Recovery rebuilds what an order has already booked from the
+    ledger. Rebuilding the quantity but not the costs would make the
+    venue's cumulative figure look entirely new, and the restart would
+    charge the earlier fills' costs a second time.
+    """
+    from vmtrader.broker.live.reconcile import _already_booked_fees
+
+    plan = {
+        '0001': [
+            OrderReport('0001', 3, 10000.0, 7, 0, 30.0, False),
+            OrderReport('0001', 7, 10000.0, 3, 0, 70.0, False),
+        ]
+    }
+    client = FakeClient(fill_plan=plan)
+    broker = _broker(client, tmp_path)
+    order = Order(broker.current_dt, 'EQ:005930', 10)
+    broker.submit_order(broker.account_id, order)
+    broker.clock = _poll_driven_clock(client, expire_after=2)
+    broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
+
+    # Two increments charged 30 and 40; the venue's cumulative figure
+    # is 70, and that is what a restart must resume from. Summing rows
+    # that each held the cumulative figure would give 100 and charge
+    # the first fill's costs again.
+    assert _already_booked_fees(broker, order.order_id) == 70.0
+
+
 def test_zero_fill_leaves_the_portfolio_untouched(tmp_path):
     """
     Tests that an unfilled order creates no transaction.
@@ -426,10 +541,12 @@ def test_update_absorbs_a_late_fill_of_a_stale_order(tmp_path):
     broker.settle(deadline=pd.Timestamp('2026-08-20 11:00:00'))
     assert broker.get_portfolio_as_dict(broker.account_id) == {}
 
-    # The order is stale, but still known to the venue.
+    # The order is stale, but still known to the venue. Both booked
+    # totals start at zero, the same shape 'submit_order' builds.
     broker.open_orders['0001'] = {
         'order_id': 'late', 'symbol': 'EQ:005930', 'quantity': 10,
-        'portfolio_id': broker.account_id, 'booked_quantity': 0
+        'portfolio_id': broker.account_id, 'booked_quantity': 0,
+        'booked_fees': 0.0
     }
     broker.clock = lambda: pd.Timestamp('2026-08-20 12:30:00')
     broker.update(pd.Timestamp('2026-08-20 12:30:00'))

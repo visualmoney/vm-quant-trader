@@ -488,7 +488,8 @@ class LiveBroker(Broker):
             'symbol': order.asset,
             'quantity': quantity,
             'portfolio_id': portfolio_id_str,
-            'booked_quantity': 0
+            'booked_quantity': 0,
+            'booked_fees': 0.0
         }
 
     # -- fill settlement -------------------------------------------------
@@ -500,6 +501,23 @@ class LiveBroker(Broker):
         Runs on the worker thread. It must not touch the portfolio: it
         appends to a buffer under a lock, and the main thread books
         from there.
+
+        Quantity and fees are both reported cumulatively by the venue,
+        and both are converted to increments here. Fees were once
+        passed through whole, which charged the running total again on
+        every increment: an order filling in three parts paid its
+        estimated costs three times over. The ledger's 'record_fill'
+        has always documented its 'fees' argument as belonging to the
+        increment, so this is the code catching up with the contract.
+
+        The fee figure is the venue's estimate and may be revised
+        between polls. Advancing the booked total only when an
+        increment is booked is what makes that safe: a revision
+        arriving with no new quantity is not lost, it is folded into
+        the next increment's difference. A revision after the last
+        increment is not booked at all, which is the same limitation
+        the average price already carries, and the same one
+        reconciliation exists to catch.
 
         Parameters
         ----------
@@ -522,6 +540,7 @@ class LiveBroker(Broker):
 
         if increment > 0:
             direction = 1 if state['quantity'] > 0 else -1
+            fees = report.fees - state['booked_fees']
             fill = {
                 'order_no': order_no,
                 'order_id': state['order_id'],
@@ -529,7 +548,8 @@ class LiveBroker(Broker):
                 'symbol': state['symbol'],
                 'quantity': direction * increment,
                 'price': report.average_price,
-                'fees': report.fees,
+                'fees': fees,
+                'cumulative_fees': report.fees,
                 'cumulative_filled': report.filled_quantity
             }
             booked = True
@@ -537,12 +557,13 @@ class LiveBroker(Broker):
                 booked = ledger.record_fill(
                     state['order_id'], order_no, report.filled_quantity,
                     direction * increment, report.average_price,
-                    report.fees, self._now()
+                    fees, self._now()
                 )
             if booked:
                 with self._buffer_lock:
                     self._fill_buffer.append(fill)
             state['booked_quantity'] = report.filled_quantity
+            state['booked_fees'] = report.fees
 
         return report.is_done
 
