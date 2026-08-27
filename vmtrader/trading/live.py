@@ -30,6 +30,28 @@ from vmtrader.trading.trading_session import TradingSession
 # strategy wedged on an external call cannot hold the cron slot past
 # this, and what it was about to submit is settled by the next
 # launch's reconciliation instead (ADR-0009).
+#
+# One of four numbers that bound a cycle, and until now none of them
+# knew about the others (report 20260826-02, S14). The relationship
+# they need is:
+#
+#     process cap  >  preamble + strategy budget
+#                     + (settlement deadline - start) + shutdown timeout
+#
+# where the preamble is reconciliation and signal warm-up, the
+# settlement deadline is 'min(start + time_budget, close - buffer)',
+# the shutdown timeout is the fill worker's join in 'settle', and the
+# process cap is the only one outside this process -- systemd's
+# 'TimeoutStartSec' or a 'timeout -k' wrapper, since nothing inside
+# can bound a main thread wedged on a vendor call.
+#
+# **With today's defaults it does not hold.** 3600s of cap against
+# 60 + 3600 + 30 plus the preamble. What that buys is a SIGTERM
+# arriving during 'settle''s finally or the STALE loop -- the one
+# window where being killed costs the ledger's record of orders that
+# are still working. Either the cap goes up or 'time_budget' comes
+# down; the sum is what has to be looked at, which is why it is
+# written here rather than left in three files.
 STRATEGY_BUDGET_SECONDS = 60.0
 
 

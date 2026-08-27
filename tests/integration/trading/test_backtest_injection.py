@@ -73,3 +73,37 @@ def test_an_injected_execution_algo_is_used(etf_filepath):
     backtest = _run(etf_filepath, execution_algo=DiscardAllOrders())
 
     assert backtest.broker.portfolios['000001'].portfolio_to_dict() == {}
+
+
+def test_the_backtest_assembles_its_actors_synchronously(etf_filepath):
+    """
+    Tests the invariant the backtest plane cannot give up.
+
+    The two planes assemble the same pair of actors, and the live one
+    can turn its strategy thread on because its cycle ends at a
+    barrier. A backtest's loop has no cycle end to hang one on, and its
+    statistics collector crosses the seam by closure rather than in the
+    message -- so a threaded backtest would read that collector while
+    the executor was still writing it (report 20260826-01, m3 and S15).
+
+    Asserted on the assembly rather than on the constant, because what
+    matters is what gets built, not what a name says.
+    """
+    os.environ['VMTRADER_CSV_DATA_DIR'] = etf_filepath
+    backtest = BacktestTradingSession(
+        pd.Timestamp('2019-01-01 00:00:00', tz=pytz.UTC),
+        pd.Timestamp('2019-01-31 23:59:00', tz=pytz.UTC),
+        StaticUniverse(['EQ:ABC', 'EQ:DEF']),
+        FixedSignalsAlphaModel({'EQ:ABC': 0.6, 'EQ:DEF': 0.4}),
+        portfolio_id='000001',
+        rebalance='weekly',
+        rebalance_weekday='WED',
+        long_only=True,
+        cash_buffer_percentage=0.05
+    )
+
+    executor, broker_actor = backtest._actors({'target_allocations': []})
+
+    assert executor.synchronous is True
+    assert broker_actor.synchronous is True
+    assert executor.is_alive() is False
