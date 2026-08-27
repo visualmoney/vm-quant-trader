@@ -35,6 +35,8 @@ from vmtrader.portcon.order_sizer.dollar_weighted import (
     DollarWeightedCashBufferedOrderSizer
 )
 from vmtrader.portcon.pcm import PortfolioConstructionModel
+from vmtrader.system.qts import QuantTradingSystem
+from vmtrader.trading.live import LiveTradingSession
 
 
 @pytest.fixture(autouse=True)
@@ -312,3 +314,121 @@ def test_the_order_value_guard_refuses_an_oversized_order(tmp_path):
     placed = [symbol for symbol, _, _ in venue.placed]
     assert SAMSUNG not in placed
     assert HYNIX in placed
+
+
+def _live_session(tmp_path, now, synchronous):
+    """
+    Assemble a whole live session over a fresh fake venue.
+
+    Unlike '_build', which hands back the pieces so a test can drive
+    them in order, this returns the session itself -- because what
+    Phase 1a has to prove is about the cycle, not about the parts.
+
+    Returns
+    -------
+    `tuple[LiveTradingSession, LiveBroker, FakeVenue]`
+        The session, its broker, and the venue behind both.
+    """
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    venue = FakeVenue()
+    data_handler = LiveDataHandler(venue)
+    broker = LiveBroker(
+        start_dt=now,
+        exchange=KrxExchange(),
+        data_handler=data_handler,
+        client=venue,
+        ledger=OrderLedger(str(tmp_path / 'live.db')),
+        fee_model=KoreaStockFeeModel(commission_pct=0.00015, tax_pct=0.0018),
+        guard=SafetyGuard(max_order_value=100000000.0),
+        clock=lambda: now
+    )
+    qts = QuantTradingSystem(
+        StaticUniverse([SAMSUNG, HYNIX]),
+        broker,
+        broker.account_id,
+        data_handler,
+        FixedSignalsAlphaModel({SAMSUNG: 0.6, HYNIX: 0.4}),
+        long_only=True,
+        cash_buffer_percentage=0.05,
+        submit_orders=True
+    )
+    session = LiveTradingSession(
+        broker, qts, clock=lambda: now, synchronous=synchronous
+    )
+    return session, broker, venue
+
+
+def _cycle_outcome(tmp_path, now, synchronous):
+    """
+    Run one whole live cycle and return everything observable about it.
+
+    Deliberately not a subset. What the two modes have to agree about
+    is the account, and picking a few fields to compare would decide
+    in advance which disagreements matter.
+
+    Returns
+    -------
+    `dict`
+        What reached the venue, the ledger and the portfolio.
+    """
+    session, broker, venue = _live_session(tmp_path, now, synchronous)
+
+    outcome = session.run_rebalance()
+    broker.update(pd.Timestamp('2026-08-20 15:30:00'), force=True)
+    broker.record_equity()
+
+    holdings = broker.get_portfolio_as_dict(broker.account_id)
+    return {
+        'traded': outcome['traded'],
+        'reason': outcome['reason'],
+        'fills_booked': outcome['fills_booked'],
+        'placed': [(symbol, quantity) for symbol, quantity, _ in venue.placed],
+        'holdings': {
+            symbol: holdings[symbol]['quantity'] for symbol in holdings
+        },
+        'cash': round(broker.get_portfolio_cash_balance(broker.account_id), 6),
+        'equity': round(
+            broker.ledger.get_equity_curve()[0]['total_equity'], 6
+        ),
+        # Nothing should be left working, and the ledger's record of
+        # what filled has to match too -- the portfolio agreeing while
+        # the audit trail differs would be the more alarming outcome.
+        'left_open': len(broker.ledger.get_open_orders()),
+        # Keyed by the venue's order number rather than the engine's
+        # id, which is generated per run and so cannot be compared
+        # across two of them.
+        'fills': sorted(
+            (row['order_no'], row['quantity'], row['price'], row['fees'])
+            for row in broker.ledger.get_fills()
+        ),
+    }
+
+
+def test_a_live_cycle_is_the_same_with_the_strategy_on_a_thread(tmp_path):
+    """
+    Tests the acceptance criterion for Phase 1a.
+
+    Turning the strategy actor's thread on is one argument, and this is
+    what makes it safe to turn: the whole cycle -- reconcile, decide,
+    size, submit, settle, value, record -- reaching the same account
+    either way.
+
+    It is the counterpart of the '.dat' comparison that governed Phase
+    0. That one proved rearranging the code did not change what a
+    backtest computes; this one proves running half of it on another
+    thread does not change what a live session does.
+
+    Everything observable is compared rather than a chosen subset,
+    since picking fields would decide in advance which disagreements
+    are allowed to matter.
+    """
+    now = pd.Timestamp('2026-08-20 10:00:00')
+
+    synchronous = _cycle_outcome(tmp_path / 'sync', now, True)
+    threaded = _cycle_outcome(tmp_path / 'threaded', now, False)
+
+    assert synchronous == threaded
+    # And it was a real cycle, not two identically empty ones.
+    assert synchronous['traded'] is True
+    assert len(synchronous['placed']) == 2
+    assert synchronous['fills_booked'] == 4

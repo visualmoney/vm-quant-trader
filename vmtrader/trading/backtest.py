@@ -21,6 +21,13 @@ from vmtrader.system.rebalance.weekly import WeeklyRebalance
 from vmtrader.trading.trading_session import TradingSession
 from vmtrader import settings
 
+# Not a default and not a parameter. A backtest's loop has no cycle
+# end for a barrier, and its statistics collector crosses the actor
+# seam by closure rather than in the message, so threading it would
+# mean reading that collector while the executor still wrote to it.
+# Named so that the day someone wants to change it, they find this.
+BACKTEST_IS_SYNCHRONOUS = True
+
 DEFAULT_ACCOUNT_NAME = 'Backtest Simulated Broker Account'
 DEFAULT_PORTFOLIO_ID = '000001'
 DEFAULT_PORTFOLIO_NAME = 'Backtest Simulated Broker Portfolio'
@@ -394,6 +401,67 @@ class BacktestTradingSession(TradingSession):
             alloc_df = alloc_df[self.burn_in_dt.date():]
         return alloc_df
 
+    def _actors(self, stats):
+        """
+        Build both actors for this run and connect them.
+
+        The mirror of 'LiveTradingSession._actors', and deliberately
+        so: the two planes assemble the same pair and differ only in
+        what they tell it.
+
+        **Synchronous, and not by preference.** A backtest's loop has
+        no cycle end to hang a barrier on, and 'stats' crosses the seam
+        by closure rather than in the message, so a threaded backtest
+        would read the collector while the executor was still writing
+        it (report 20260826-01, m3 and S15). The flag is asserted here
+        rather than merely passed, so that turning it into a parameter
+        one day has to confront that first.
+
+        The broker actor holds the write path; the strategy actor
+        holds only a way to reach its mailbox. Handing the executor
+        'size_and_submit' directly is what report 20260826-01 found as
+        B1 -- the withdrawn decision 5, re-entered through an injected
+        callable that no import boundary could see.
+
+        A failure stops the run. Principle 1: a result computed over a
+        market that did not exist is worse than no result. 'on_error'
+        is where a plane says that, and it is the only thing this
+        assembly says differently from the live one.
+
+        Built per run because a stopped executor is replaced rather
+        than restarted, and because 'stats' is a per-run collector.
+
+        Parameters
+        ----------
+        stats : `dict`
+            The run's statistics collector.
+
+        Returns
+        -------
+        `tuple[BaseStrategyExecutor, BrokerActor]`
+            The strategy actor and the broker actor.
+        """
+        def fail_loudly(error):
+            raise error
+
+        broker_actor = BrokerActor(
+            size_and_submit=lambda command: self.qts.size_and_submit(
+                command, stats=stats
+            ),
+            synchronous=BACKTEST_IS_SYNCHRONOUS,
+            on_error=fail_loudly
+        )
+        executor = BaseStrategyExecutor(
+            strategy=as_strategy(
+                self.qts.portfolio_construction_model.alpha_model
+            ),
+            decide=self.qts.decide_weights,
+            broker=broker_actor,
+            synchronous=BACKTEST_IS_SYNCHRONOUS,
+            on_error=fail_loudly
+        )
+        return executor, broker_actor
+
     def run(self, results=False):
         """
         Execute the simulation engine by iterating over all
@@ -410,39 +478,7 @@ class BacktestTradingSession(TradingSession):
 
         stats = {'target_allocations': []}
 
-        # The strategy actor, synchronous: no thread, and every event
-        # handled on this one. It is built per run because a stopped
-        # executor is replaced rather than restarted, and 'stats' is a
-        # per-run collector its outbox has to reach.
-        # The broker actor holds the write path; the strategy actor
-        # holds only a way to reach its mailbox. Handing the executor
-        # 'size_and_submit' directly is finding B1 of report
-        # 20260826-01 -- the withdrawn decision 5, re-entered through
-        # an injected callable.
-        # A backtest's policy for a failure is to stop. Principle 1:
-        # a run that carries on over missing data produces a result
-        # from a market that did not exist, which is worse than no
-        # result. 'on_error' is where a plane says that -- the actors
-        # behave identically in both modes and defer the meaning here.
-        def fail_loudly(error):
-            raise error
-
-        broker_actor = BrokerActor(
-            size_and_submit=lambda command: self.qts.size_and_submit(
-                command, stats=stats
-            ),
-            synchronous=True,
-            on_error=fail_loudly
-        )
-        executor = BaseStrategyExecutor(
-            strategy=as_strategy(
-                self.qts.portfolio_construction_model.alpha_model
-            ),
-            decide=self.qts.decide_weights,
-            broker=broker_actor,
-            synchronous=True,
-            on_error=fail_loudly
-        )
+        executor, broker_actor = self._actors(stats)
 
         for event in self.sim_engine:
             # Output the system event and timestamp
